@@ -308,7 +308,7 @@ export default function Editor() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-[1400px] mx-auto px-4 h-14 flex items-center gap-3">
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-4 h-14 flex items-center gap-3">
           <button
             onClick={() => navigate("/")}
             className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-sm"
@@ -352,8 +352,8 @@ export default function Editor() {
         </div>
       </header>
 
-      <div className="flex-1 flex flex-col gap-4 p-4 max-w-[1400px] mx-auto w-full">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="flex-1 flex flex-col gap-4 p-3 sm:p-4 max-w-[1400px] mx-auto w-full">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
           {panels.map((panel, i) => (
             <div key={i} className="rounded-lg border border-border bg-card overflow-hidden">
               <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border bg-muted/40">
@@ -388,7 +388,7 @@ export default function Editor() {
           ))}
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-4 flex-1">
+        <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 flex-1">
           <div className="flex-1 rounded-lg border border-border bg-card overflow-hidden flex flex-col">
             <div className="px-4 py-2.5 border-b border-border bg-muted/40 flex items-center gap-2">
               <AlignLeft className="w-3.5 h-3.5 text-muted-foreground" />
@@ -455,7 +455,7 @@ export default function Editor() {
             </div>
           </div>
 
-          <div className="w-full lg:w-72 rounded-lg border border-border bg-card overflow-hidden flex flex-col">
+          <div className="w-full lg:w-72 rounded-lg border border-border bg-card overflow-hidden flex flex-col hidden sm:flex">
             <div className="px-4 py-2.5 border-b border-border bg-muted/40">
               <span className="text-sm font-medium">Элементы</span>
             </div>

@@ -5,13 +5,13 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <Sparkles className="w-4 h-4 text-primary-foreground" />
             </div>
             <span className="font-semibold text-foreground">КардоМатик</span>
-            <span className="text-xs text-muted-foreground hidden sm:block">ИИ-генератор карточек</span>
+            <span className="text-xs text-muted-foreground hidden md:block">ИИ-генератор карточек</span>
           </div>
           <nav className="flex items-center gap-4">
             <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -27,7 +27,7 @@ export default function Landing() {
       </header>
 
       <main className="flex-1">
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-20 pb-16 text-center">
+        <section className="max-w-6xl mx-auto px-3 sm:px-6 pt-12 sm:pt-20 pb-10 sm:pb-16 text-center">
           <div className="inline-flex items-center gap-1.5 bg-primary/10 text-primary text-xs font-medium px-3 py-1.5 rounded-full mb-8 border border-primary/20">
             <Sparkles className="w-3 h-3" />
             ИИ для маркетплейсов
@@ -74,13 +74,13 @@ export default function Landing() {
           </div>
         </section>
 
-        <section id="how-it-works" className="bg-muted/30 border-y border-border py-16">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <section id="how-it-works" className="bg-muted/30 border-y border-border py-10 sm:py-16">
+          <div className="max-w-6xl mx-auto px-3 sm:px-6">
             <div className="text-center mb-12">
               <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">Как это работает</h2>
               <p className="text-muted-foreground">Три простых шага до профессиональной карточки товара</p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
               {[
                 {
                   num: "01",
@@ -120,12 +120,12 @@ export default function Landing() {
           </div>
         </section>
 
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+        <section className="max-w-6xl mx-auto px-3 sm:px-6 py-10 sm:py-16">
           <div className="text-center mb-12">
             <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">Всё что нужно для маркетплейса</h2>
             <p className="text-muted-foreground">Три инструмента в одном приложении</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
             {[
               {
                 icon: <Layers className="w-7 h-7 text-violet-500" />,
@@ -165,8 +165,8 @@ export default function Landing() {
           </div>
         </section>
 
-        <section className="bg-gradient-to-br from-violet-600 via-blue-600 to-cyan-500 py-16">
-          <div className="max-w-2xl mx-auto px-4 sm:px-6 text-center">
+        <section className="bg-gradient-to-br from-violet-600 via-blue-600 to-cyan-500 py-10 sm:py-16">
+          <div className="max-w-2xl mx-auto px-3 sm:px-6 text-center">
             <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">
               Попробуйте прямо сейчас
             </h2>
@@ -187,7 +187,7 @@ export default function Landing() {
       </main>
 
       <footer className="border-t border-border py-6">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-muted-foreground">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 rounded bg-primary flex items-center justify-center">
               <Sparkles className="w-3 h-3 text-primary-foreground" />

@@ -63,7 +63,7 @@ export default function PaymentSuccess() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+    <div className="min-h-screen bg-background flex items-center justify-center px-3 sm:px-4">
       <div className="max-w-md w-full text-center space-y-6">
         <div className="flex justify-center">
           <div className="w-20 h-20 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center">
@@ -97,7 +97,7 @@ export default function PaymentSuccess() {
         </div>
 
         {starsAdded > 0 && (
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-6 space-y-2">
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 sm:p-6 space-y-2">
             <div className="flex items-center justify-center gap-2">
               <Star className="w-6 h-6 text-amber-500 fill-amber-500" />
               <span className="text-3xl font-bold text-amber-600">+{starsAdded}</span>

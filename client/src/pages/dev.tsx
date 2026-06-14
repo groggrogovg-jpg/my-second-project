@@ -21,7 +21,7 @@ export default function DevPage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">
-      <div className="bg-card border border-border rounded-xl p-8 shadow-lg w-80 space-y-4">
+      <div className="bg-card border border-border rounded-xl p-6 sm:p-8 shadow-lg w-full max-w-xs sm:max-w-sm mx-3 space-y-4">
         <h1 className="text-lg font-bold text-foreground">Dev панель</h1>
         <p className="text-sm text-muted-foreground">
           Текущий баланс: <span className="font-bold text-amber-500">⭐ {stars}</span>
