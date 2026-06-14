@@ -1095,7 +1095,6 @@ function VideoTabContent({
           </div>
         </div>
       </div>
-    </div>
     </TooltipProvider>
   );
 }
