@@ -20,46 +20,47 @@ export default function Pricing() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-4">
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center gap-2 sm:gap-4">
           <Link href="/">
-            <button className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+            <button className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm">Назад</span>
+              <span className="text-sm hidden sm:inline">Назад</span>
             </button>
           </Link>
-          <div className="flex items-center gap-2 ml-2">
-            <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center">
-              <Sparkles className="w-3.5 h-3.5 text-primary-foreground" />
+          <div className="flex items-center gap-2 ml-1 sm:ml-2">
+            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md bg-primary flex items-center justify-center">
+              <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-primary-foreground" />
             </div>
-            <span className="font-bold text-base text-foreground">КардоМатик</span>
+            <span className="font-bold text-sm sm:text-base text-foreground">КардоМатик</span>
           </div>
           {TEST_MODE && (
-            <Badge variant="outline" className="ml-auto text-xs border-orange-400 text-orange-500 bg-orange-500/10 flex items-center gap-1">
+            <Badge variant="outline" className="ml-auto text-[10px] sm:text-xs border-orange-400 text-orange-500 bg-orange-500/10 flex items-center gap-1 px-1.5 py-0.5 sm:px-2.5 sm:py-0.5">
               <FlaskConical className="w-3 h-3" />
-              Тестовый режим · цены ÷100
+              <span className="hidden sm:inline">Тестовый режим · цены ÷100</span>
+              <span className="sm:hidden">Тест</span>
             </Badge>
           )}
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-12">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-xs font-medium mb-4">
+      <main className="max-w-5xl mx-auto px-3 sm:px-6 py-8 sm:py-12">
+        <div className="text-center mb-6 sm:mb-10">
+          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-xs font-medium mb-3 sm:mb-4">
             <Zap className="w-3 h-3" />
             Тарифы и цены
           </div>
-          <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-3 tracking-tight">
-            Выберите удобный<br />
-            <span className="text-primary">формат работы</span>
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-2 sm:mb-3 tracking-tight">
+            <span className="sm:hidden">Выберите удобный формат</span>
+            <span className="hidden sm:inline">Выберите удобный<br />формат работы</span>
           </h1>
-          <p className="text-muted-foreground max-w-xl mx-auto mb-4">
+          <p className="text-sm sm:text-base text-muted-foreground max-w-xl mx-auto mb-3 sm:mb-4 px-1">
             ИИ создаёт профессиональные карточки для маркетплейсов. Оплата через ЮMoney — быстро и безопасно.
           </p>
           <StarRatioExplainer />
         </div>
 
-        <div className="flex justify-center mb-10">
-          <div className="inline-flex bg-muted rounded-lg p-1 gap-1">
+        <div className="flex justify-center mb-6 sm:mb-10">
+          <div className="inline-flex bg-muted rounded-lg p-1 gap-1 w-full sm:w-auto">
             {(
               [
                 { id: "single", label: "Поштучно", icon: Sparkles },
@@ -71,14 +72,14 @@ export default function Pricing() {
                 key={id}
                 data-testid={`tab-${id}`}
                 onClick={() => setTab(id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
                   tab === id
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
-                {label}
+                <span className="hidden sm:inline">{label}</span>
               </button>
             ))}
           </div>
@@ -94,13 +95,13 @@ export default function Pricing() {
 
 function StarRatioExplainer() {
   return (
-    <div className="inline-flex flex-col sm:flex-row items-center gap-3 bg-card border border-border rounded-xl px-5 py-3 text-sm">
+    <div className="inline-flex flex-col sm:flex-row items-center gap-2 sm:gap-3 bg-card border border-border rounded-xl px-3 py-2 sm:px-5 sm:py-3 text-sm max-w-[calc(100vw-1.5rem)]">
       <div className="flex items-center gap-2">
         <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
         <span className="font-semibold text-foreground">Система звёзд</span>
       </div>
       <Separator orientation="vertical" className="hidden sm:block h-4" />
-      <div className="flex flex-wrap justify-center sm:justify-start items-center gap-3 text-xs text-muted-foreground">
+      <div className="flex flex-wrap justify-center sm:justify-start items-center gap-2 sm:gap-3 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
           <span className="font-semibold text-amber-600">7 ⭐</span>
           <span>= 1 кард Pro (2K)</span>
@@ -115,7 +116,8 @@ function StarRatioExplainer() {
             <span className="text-border">·</span>
             <span className="flex items-center gap-1 text-orange-500 font-medium">
               <FlaskConical className="w-3 h-3" />
-              Цены тестовые ÷100
+              <span className="hidden sm:inline">Цены тестовые ÷100</span>
+              <span className="sm:hidden">Тест</span>
             </span>
           </>
         )}
@@ -127,18 +129,18 @@ function StarRatioExplainer() {
 function GenerationBadges({ stars }: { stars: number }) {
   const gens = starsToGenerations(stars);
   return (
-    <div className="flex flex-wrap gap-2 mt-2">
-      <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 rounded-md px-2.5 py-1">
+    <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-2">
+      <div className="flex items-center gap-1 sm:gap-1.5 bg-amber-500/10 border border-amber-500/20 rounded-md px-2 py-0.5 sm:px-2.5 sm:py-1">
         <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-        <span className="text-xs font-semibold text-amber-600">{stars} звёзд</span>
+        <span className="text-[10px] sm:text-xs font-semibold text-amber-600">{stars} звёзд</span>
       </div>
-      <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 rounded-md px-2.5 py-1">
+      <div className="flex items-center gap-1 sm:gap-1.5 bg-primary/10 border border-primary/20 rounded-md px-2 py-0.5 sm:px-2.5 sm:py-1">
         <Sparkles className="w-3 h-3 text-primary" />
-        <span className="text-xs text-primary font-medium">{gens.pro} Pro-кард</span>
+        <span className="text-[10px] sm:text-xs text-primary font-medium">{gens.pro} Pro-кард</span>
       </div>
-      <div className="flex items-center gap-1.5 bg-muted border border-border rounded-md px-2.5 py-1">
+      <div className="flex items-center gap-1 sm:gap-1.5 bg-muted border border-border rounded-md px-2 py-0.5 sm:px-2.5 sm:py-1">
         <Zap className="w-3 h-3 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground font-medium">{gens.nano2} Nano2-кард</span>
+        <span className="text-[10px] sm:text-xs text-muted-foreground font-medium">{gens.nano2} Nano2-кард</span>
       </div>
     </div>
   );
@@ -222,29 +224,29 @@ function SinglePricing() {
   return (
     <div className="max-w-sm mx-auto">
       <Card className="overflow-hidden border-primary ring-1 ring-primary" data-testid="plan-single">
-        <div className="p-6 space-y-5">
+        <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
           <div>
             <div className="flex items-start justify-between mb-2">
-              <h3 className="font-bold text-xl text-foreground">{plan.name}</h3>
-              <Badge>Быстрый старт</Badge>
+              <h3 className="font-bold text-lg sm:text-xl text-foreground">{plan.name}</h3>
+              <Badge className="text-[10px] sm:text-xs">Быстрый старт</Badge>
             </div>
-            <p className="text-muted-foreground text-sm">Идеально для пробного заказа или единичного товара</p>
+            <p className="text-muted-foreground text-xs sm:text-sm">Идеально для пробного заказа или единичного товара</p>
           </div>
           <div>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-bold text-foreground">{formatPrice(plan.price)} ₽</span>
+              <span className="text-3xl sm:text-4xl font-bold text-foreground">{formatPrice(plan.price)} ₽</span>
               {TEST_MODE && (
-                <span className="text-sm text-muted-foreground line-through">{plan.price.toLocaleString("ru")} ₽</span>
+                <span className="text-xs text-muted-foreground line-through">{plan.price.toLocaleString("ru")} ₽</span>
               )}
             </div>
             <p className="text-xs text-muted-foreground mt-1">{plan.unit}</p>
             <GenerationBadges stars={plan.starsIncluded} />
           </div>
           <Separator />
-          <ul className="space-y-2.5">
+          <ul className="space-y-2">
             {plan.features.map((f) => (
-              <li key={f} className="flex items-center gap-2.5 text-sm">
-                <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+              <li key={f} className="flex items-center gap-2 sm:gap-2.5 text-xs sm:text-sm">
+                <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-500 flex-shrink-0" />
                 <span className="text-foreground">{f}</span>
               </li>
             ))}
@@ -259,36 +261,36 @@ function SinglePricing() {
 function PackagesPricing() {
   const packages = PRICING_PLANS.filter((p) => p.id !== "single");
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
       {packages.map((plan) => (
         <Card
           key={plan.id}
           className={`overflow-hidden transition-all ${plan.popular ? "border-primary ring-1 ring-primary" : "border-border"}`}
           data-testid={`plan-${plan.id}`}
         >
-          <div className="p-5 space-y-4">
+          <div className="p-3 sm:p-5 space-y-3 sm:space-y-4">
             <div>
               <div className="flex items-start justify-between mb-1.5">
-                <h3 className="font-bold text-lg text-foreground">{plan.name}</h3>
-                {plan.popular && <Badge className="text-xs">Популярный</Badge>}
+                <h3 className="font-bold text-base sm:text-lg text-foreground">{plan.name}</h3>
+                {plan.popular && <Badge className="text-[10px] sm:text-xs">Популярный</Badge>}
               </div>
               <p className="text-muted-foreground text-xs">{plan.cards} карточек</p>
             </div>
             <div>
               <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="text-2xl font-bold text-foreground">{formatPrice(plan.price)} ₽</span>
+                <span className="text-xl sm:text-2xl font-bold text-foreground">{formatPrice(plan.price)} ₽</span>
                 {TEST_MODE && (
-                  <span className="text-xs text-muted-foreground line-through">{plan.price.toLocaleString("ru")} ₽</span>
+                  <span className="text-[10px] sm:text-xs text-muted-foreground line-through">{plan.price.toLocaleString("ru")} ₽</span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">{plan.unit}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">{plan.unit}</p>
               <GenerationBadges stars={plan.starsIncluded} />
             </div>
             <Separator />
-            <ul className="space-y-2">
+            <ul className="space-y-1.5 sm:space-y-2">
               {plan.features.map((f) => (
-                <li key={f} className="flex items-center gap-2 text-xs">
-                  <Check className={`w-3.5 h-3.5 flex-shrink-0 ${f.includes("Экономия") ? "text-primary" : "text-green-500"}`} />
+                <li key={f} className="flex items-center gap-2 text-[10px] sm:text-xs">
+                  <Check className={`w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0 ${f.includes("Экономия") ? "text-primary" : "text-green-500"}`} />
                   <span className={`${f.includes("Экономия") ? "text-primary font-semibold" : "text-foreground"}`}>{f}</span>
                 </li>
               ))}

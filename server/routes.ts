@@ -234,6 +234,30 @@ async function analyzeWithGpt(imageBase64: string, mimeType: string, notes?: str
   return JSON.parse(cleaned);
 }
 
+// Создаём текстовые идеи для поля "О чём рассказать" — только русский текст, без JSON
+async function suggestNotes(imageBase64: string, mimeType: string): Promise<string> {
+  const systemPrompt = `Ты — топ-маркетолог мирового уровня. Проанализируй фото товара и напиши 4–5 преимуществ или уникальных свойств в продающей форме, которые было бы полезно указать продавцу для карточки на маркетплейсе.
+Напиши только русский текст без любой разметки, без заголовков, без перечислений. Только плотное полезное описание, как будто продавец сам описывает свой товар. Одно предложение, до 300 символов.`;
+
+  const response = await getOpenAI().chat.completions.create({
+    model: "openai/gpt-5.4-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: `data:${mimeType};base64,${imageBase64}`, detail: "high" } },
+          { type: "text", text: "Напиши преимущества этого товара для карточки на маркетплейсе. Только текст, без форматирования." },
+        ],
+      },
+    ],
+    max_tokens: 500,
+    temperature: 0.8,
+  });
+
+  return (response.choices[0]?.message?.content || "").trim();
+}
+
 // Polza.ai — генерация карточки товара через /api/v1/media
 async function generateCardWithPolza(
   imageBuffer: Buffer,
@@ -272,13 +296,17 @@ async function generateTryonWithPolza(
   personBuffer: Buffer,
   _personFilename: string,
   personMime: string,
-  garmentBuffer: Buffer,
-  garmentMime: string,
+  garmentFiles: Express.Multer.File[],
 ): Promise<string> {
   const polzaModelId = POLZA_MODEL_MAP["nano-banana-2"];
-  console.log(`[polza.ai] ▶ generateTryon polzaModel=${polzaModelId}`);
+  console.log(`[polza.ai] ▶ generateTryon polzaModel=${polzaModelId} garments=${garmentFiles.length}`);
 
-  const prompt = "Fashion editorial photo. The model (first image) is photographed wearing the clothing item shown in the second image. Preserve the model's original pose, face, hair and background. The clothing item is displayed on the model exactly as it would appear in a professional fashion catalog. High quality studio photography, natural lighting, clean result, no distortions.";
+  const garmentDesc = garmentFiles.map((f, i) => {
+    const name = f.originalname.replace(/\.[^.]+$/, "");
+    return `${i + 1}. ${name}`;
+  }).join("; ");
+
+  const prompt = `Fashion editorial photo. The model (first image) is photographed wearing the following clothing items: ${garmentDesc}. Preserve the model's original pose, face, hair and background. The clothing items are displayed on the model exactly as they would appear in a professional fashion catalog. Combine all items into a cohesive outfit. High quality studio photography, natural lighting, clean result, no distortions.`;
 
   return callPolzaMedia({
     polzaModelId,
@@ -287,7 +315,7 @@ async function generateTryonWithPolza(
     imageResolution: "1K",
     images: [
       { buffer: personBuffer, mimeType: personMime },
-      { buffer: garmentBuffer, mimeType: garmentMime },
+      ...garmentFiles.map((f) => ({ buffer: f.buffer, mimeType: f.mimetype })),
     ],
   });
 }
@@ -358,6 +386,19 @@ async function generateVideoWithPolza(
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+
+  // AI-идеи для поля "О чём рассказать" — на основе фото товара
+  app.post("/api/suggest-notes", upload.single("image"), async (req: Request, res: Response) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "И\u0437\u043e\u0431\u0440\u0430\u0436\u0435\u043d\u0438\u0435 \u043d\u0435 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d\u043e" });
+      const imageBase64 = req.file.buffer.toString("base64");
+      const notes = await suggestNotes(imageBase64, req.file.mimetype);
+      res.json({ notes });
+    } catch (err: any) {
+      console.error("[suggest-notes] О\u0448\u0438\u0431\u043a\u0430:", err.message);
+      res.status(500).json({ error: err.message || "О\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u0433\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u0438" });
+    }
+  });
 
   app.post("/api/generate", upload.single("image"), async (req: Request, res: Response) => {
     try {
@@ -470,18 +511,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/generate-tryon", upload.fields([
     { name: "person", maxCount: 1 },
-    { name: "garment", maxCount: 1 },
+    { name: "garment", maxCount: 5 },
   ]), async (req: Request, res: Response) => {
     try {
       const files = req.files as Record<string, Express.Multer.File[]>;
       const personFile = files?.person?.[0];
-      const garmentFile = files?.garment?.[0];
+      const garmentFiles = files?.garment || [];
 
-      if (!personFile || !garmentFile) {
-        return res.status(400).json({ error: "Нужны оба фото: человека и одежды" });
+      if (!personFile || garmentFiles.length === 0) {
+        return res.status(400).json({ error: "Нужны фото модели и хотя бы 1 элемент одежды" });
       }
 
-      console.log(`[generate-tryon] ▶ START person=${personFile.originalname} garment=${garmentFile.originalname}`);
+      console.log(`[generate-tryon] ▶ START person=${personFile.originalname} garments=${garmentFiles.length}`);
 
       const generation = await storage.createGeneration({
         originalImageUrl: `data:${personFile.mimetype};base64,${personFile.buffer.toString("base64")}`,
@@ -498,7 +539,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           console.log(`[generate-tryon] ▶ Calling Polza.ai for tryon id=${generation.id}`);
           const resultUrl = await generateTryonWithPolza(
             personFile.buffer, personFile.originalname, personFile.mimetype,
-            garmentFile.buffer, garmentFile.mimetype,
+            garmentFiles,
           );
           await storage.updateGeneration(generation.id, { status: "done", resultImageUrl: resultUrl });
           console.log(`[generate-tryon] ✓ Polza.ai done id=${generation.id} url=${resultUrl.substring(0, 80)}...`);

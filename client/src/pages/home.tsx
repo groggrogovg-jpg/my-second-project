@@ -19,6 +19,16 @@ import type { Generation } from "@shared/schema";
 import { MODELS, ASPECT_RATIOS, INITIAL_STARS, starsToGenerations, VIDEO_STAR_COSTS, TRYON_STAR_COST, type ModelId, type AspectRatioId } from "@shared/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
+// Категории одежды для примерки
+type GarmentCategory = "head" | "top" | "bottom" | "feet" | "extra";
+const GARMENT_CATEGORIES: { id: GarmentCategory; label: string; examples: string }[] = [
+  { id: "head", label: "Голова / аксессуары", examples: "Шапка, кепка, очки, шарф, берет" },
+  { id: "top", label: "Верх", examples: "Футболка, пиджак, рубашка, платье, свитер" },
+  { id: "bottom", label: "Низ", examples: "Штаны, юбка, колготки, джинсы, шорты" },
+  { id: "feet", label: "Ноги", examples: "Ботинки, кроссовки, кеды, сапоги, сандалии" },
+  { id: "extra", label: "Дополнительно", examples: "Сумка, ремень, часы, бижутерия, пальто" },
+];
+
 const STARS_KEY = "kardo_stars";
 const USED_PROMOS_KEY = "kardo_used_promos";
 
@@ -79,9 +89,13 @@ export default function Home() {
   const [videoLooping, setVideoLooping] = useState(false);
   const [videoCardMode, setVideoCardMode] = useState(false);
   const [videoDesc, setVideoDesc] = useState("");
-  const [tryonGarmentFile, setTryonGarmentFile] = useState<File | null>(null);
-  const [tryonGarmentUrl, setTryonGarmentUrl] = useState<string | null>(null);
-  const tryonGarmentInputRef = useRef<HTMLInputElement>(null);
+  const [tryonGarments, setTryonGarments] = useState<Record<GarmentCategory, { file: File | null; url: string | null }>>({
+    head: { file: null, url: null },
+    top: { file: null, url: null },
+    bottom: { file: null, url: null },
+    feet: { file: null, url: null },
+    extra: { file: null, url: null },
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -240,9 +254,10 @@ export default function Home() {
   const currentModel = MODELS.find((m) => m.id === selectedModel)!;
   const videoStars = VIDEO_STAR_COSTS[videoDuration];
 
+  const hasAnyGarment = Object.values(tryonGarments).some((g) => g.file !== null);
   const canGenerate =
     activeTab === "card" ? (stars >= currentModel.stars && selectedFiles.length > 0) :
-    activeTab === "photo" ? (stars >= TRYON_STAR_COST && selectedFiles.length > 0 && !!tryonGarmentFile) :
+    activeTab === "photo" ? (stars >= TRYON_STAR_COST && selectedFiles.length > 0 && hasAnyGarment) :
     false;
 
   const cardMutation = useMutation({
@@ -297,10 +312,10 @@ export default function Home() {
   });
 
   const tryonMutation = useMutation({
-    mutationFn: async ({ personFile, garmentFile }: { personFile: File; garmentFile: File }) => {
+    mutationFn: async ({ personFile, garmentFiles }: { personFile: File; garmentFiles: File[] }) => {
       const formData = new FormData();
       formData.append("person", personFile);
-      formData.append("garment", garmentFile);
+      garmentFiles.forEach((f) => formData.append("garment", f));
       const response = await fetch("/api/generate-tryon", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -344,8 +359,12 @@ export default function Home() {
   const handleGenerate = () => {
     if (!canGenerate) return;
     if (activeTab === "photo") {
-      if (!selectedFiles[0] || !tryonGarmentFile) return;
-      tryonMutation.mutate({ personFile: selectedFiles[0], garmentFile: tryonGarmentFile });
+      if (!selectedFiles[0]) return;
+      const garmentFiles = Object.values(tryonGarments)
+        .map((g) => g.file)
+        .filter(Boolean) as File[];
+      if (garmentFiles.length === 0) return;
+      tryonMutation.mutate({ personFile: selectedFiles[0], garmentFiles });
     } else {
       if (!selectedFiles[0]) return;
       cardMutation.mutate(selectedFiles[0]);
@@ -579,11 +598,8 @@ export default function Home() {
               setVideoCardMode={setVideoCardMode}
               videoDesc={videoDesc}
               setVideoDesc={setVideoDesc}
-              tryonGarmentFile={tryonGarmentFile}
-              setTryonGarmentFile={setTryonGarmentFile}
-              tryonGarmentUrl={tryonGarmentUrl}
-              setTryonGarmentUrl={setTryonGarmentUrl}
-              tryonGarmentInputRef={tryonGarmentInputRef}
+              tryonGarments={tryonGarments}
+              setTryonGarments={setTryonGarments}
               stars={stars}
               canGenerate={canGenerate}
               currentModel={currentModel}
@@ -733,7 +749,7 @@ function GenerateBlock({
   videoLooping, setVideoLooping,
   videoCardMode, setVideoCardMode,
   videoDesc, setVideoDesc,
-  tryonGarmentFile, setTryonGarmentFile, tryonGarmentUrl, setTryonGarmentUrl, tryonGarmentInputRef,
+  tryonGarments, setTryonGarments,
   stars, canGenerate, currentModel, videoStars, isPending, hasFiles,
   onGenerate,
 }: {
@@ -744,9 +760,8 @@ function GenerateBlock({
   videoLooping: boolean; setVideoLooping: (v: boolean) => void;
   videoCardMode: boolean; setVideoCardMode: (v: boolean) => void;
   videoDesc: string; setVideoDesc: (v: string) => void;
-  tryonGarmentFile: File | null; setTryonGarmentFile: (f: File | null) => void;
-  tryonGarmentUrl: string | null; setTryonGarmentUrl: (u: string | null) => void;
-  tryonGarmentInputRef: React.RefObject<HTMLInputElement>;
+  tryonGarments: Record<GarmentCategory, { file: File | null; url: string | null }>;
+  setTryonGarments: React.Dispatch<React.SetStateAction<Record<GarmentCategory, { file: File | null; url: string | null }>>>;
   stars: number; canGenerate: boolean;
   currentModel: typeof MODELS[number];
   videoStars: number;
@@ -801,16 +816,14 @@ function GenerateBlock({
           selectedModel={selectedModel}
           setSelectedModel={setSelectedModel}
           stars={stars}
+          selectedFiles={selectedFiles}
         />
       )}
 
       {activeTab === "photo" && (
         <TryonTabContent
-          tryonGarmentFile={tryonGarmentFile}
-          setTryonGarmentFile={setTryonGarmentFile}
-          tryonGarmentUrl={tryonGarmentUrl}
-          setTryonGarmentUrl={setTryonGarmentUrl}
-          tryonGarmentInputRef={tryonGarmentInputRef}
+          tryonGarments={tryonGarments}
+          setTryonGarments={setTryonGarments}
           hasPersonPhoto={hasFiles}
         />
       )}
@@ -820,9 +833,9 @@ function GenerateBlock({
           <p className="text-xs text-muted-foreground text-center mb-2">Сначала загрузите фото товара</p>
         )}
         {activeTab === "photo" && !hasFiles && (
-          <p className="text-xs text-muted-foreground text-center mb-2">Загрузите фото человека в блоке выше</p>
+          <p className="text-xs text-muted-foreground text-center mb-2">Загрузите фото модели в блоке выше</p>
         )}
-        {activeTab === "photo" && hasFiles && !tryonGarmentFile && (
+        {activeTab === "photo" && hasFiles && !hasAnyGarment && (
           <p className="text-xs text-muted-foreground text-center mb-2">Загрузите фото одежды ниже</p>
         )}
         {activeTab === "card" && hasFiles && stars < currentModel.stars && (
@@ -830,7 +843,7 @@ function GenerateBlock({
             Недостаточно звёзд. Нужно {currentModel.stars} ⭐, у вас {stars} ⭐
           </p>
         )}
-        {activeTab === "photo" && hasFiles && tryonGarmentFile && stars < TRYON_STAR_COST && (
+        {activeTab === "photo" && hasFiles && hasAnyGarment && stars < TRYON_STAR_COST && (
           <p className="text-xs text-destructive text-center mb-2">
             Недостаточно звёзд. Нужно {TRYON_STAR_COST} ⭐, у вас {stars} ⭐
           </p>
@@ -847,7 +860,7 @@ function GenerateBlock({
           ) : stars === 0 ? (
             <Link href="/pricing" className="flex items-center gap-2 w-full justify-center"><Star className="w-4 h-4" />Пополнить звёзды</Link>
           ) : activeTab === "photo" ? (
-            <><Sparkles className="w-4 h-4 mr-2" />{hasFiles && tryonGarmentFile ? `Примерить · ${TRYON_STAR_COST} ⭐` : "Загрузите фото и одежду"}</>
+            <><Sparkles className="w-4 h-4 mr-2" />{hasFiles && hasAnyGarment ? `Примерить · ${TRYON_STAR_COST} ⭐` : "Загрузите фото и одежду"}</>
           ) : (
             <><Sparkles className="w-4 h-4 mr-2" />{hasFiles ? `Создать карточку · ${currentModel.stars} ⭐` : "Загрузите фото"}</>
           )}
@@ -859,18 +872,49 @@ function GenerateBlock({
 
 function CardTabContent({
   notes, setNotes, selectedModel, setSelectedModel, stars,
+  selectedFiles,
 }: {
   notes: string; setNotes: (v: string) => void;
   selectedModel: ModelId; setSelectedModel: (m: ModelId) => void;
   stars: number;
+  selectedFiles: File[];
 }) {
+  const [suggesting, setSuggesting] = useState(false);
+  const { toast } = useToast();
+
+  const handleSuggest = async () => {
+    if (!selectedFiles[0]) {
+      toast({ title: "Сначала загрузите фото товара", variant: "destructive" });
+      return;
+    }
+    setSuggesting(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", selectedFiles[0]);
+      const res = await fetch("/api/suggest-notes", { method: "POST", body: fd });
+      if (!res.ok) throw new Error("Ошибка сервера");
+      const data = await res.json();
+      setNotes(data.notes || "");
+      toast({ title: "Готово! Текст вставлен — можете отредактировать" });
+    } catch (err: any) {
+      toast({ title: "Ошибка AI-идеи", description: err.message, variant: "destructive" });
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <p className="text-xs font-medium text-foreground">О чём рассказать</p>
-          <button className="flex items-center gap-1 text-xs text-primary font-medium opacity-70 hover:opacity-100 transition-opacity">
-            <Sparkles className="w-3 h-3" />
+          <button
+            onClick={handleSuggest}
+            disabled={suggesting || !selectedFiles[0]}
+            className="flex items-center gap-1 text-xs text-primary font-medium opacity-70 hover:opacity-100 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+            data-testid="button-suggest-notes"
+          >
+            {suggesting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
             AI идея
           </button>
         </div>
@@ -891,81 +935,103 @@ function CardTabContent({
 }
 
 function TryonTabContent({
-  tryonGarmentFile, setTryonGarmentFile, tryonGarmentUrl, setTryonGarmentUrl,
-  tryonGarmentInputRef, hasPersonPhoto,
+  tryonGarments, setTryonGarments, hasPersonPhoto,
 }: {
-  tryonGarmentFile: File | null; setTryonGarmentFile: (f: File | null) => void;
-  tryonGarmentUrl: string | null; setTryonGarmentUrl: (u: string | null) => void;
-  tryonGarmentInputRef: React.RefObject<HTMLInputElement>;
+  tryonGarments: Record<GarmentCategory, { file: File | null; url: string | null }>;
+  setTryonGarments: React.Dispatch<React.SetStateAction<Record<GarmentCategory, { file: File | null; url: string | null }>>>;
   hasPersonPhoto: boolean;
 }) {
+  const activeRef = useRef<GarmentCategory | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const handleGarmentSelect = (files: FileList | null) => {
-    if (!files || !files[0]) return;
+    if (!files || !files[0] || !activeRef.current) return;
     const file = files[0];
-    setTryonGarmentFile(file);
-    setTryonGarmentUrl(URL.createObjectURL(file));
+    const cat = activeRef.current;
+    setTryonGarments((prev) => ({
+      ...prev,
+      [cat]: { file, url: URL.createObjectURL(file) },
+    }));
   };
+
+  const removeGarment = (cat: GarmentCategory) => {
+    setTryonGarments((prev) => ({ ...prev, [cat]: { file: null, url: null } }));
+  };
+
+  const openPicker = (cat: GarmentCategory) => {
+    activeRef.current = cat;
+    fileInputRef.current?.click();
+  };
+
+  const hasAnyGarment = Object.values(tryonGarments).some((g) => g.file !== null);
 
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5">
         <p className="text-xs font-semibold text-foreground">Как это работает</p>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          1. Загрузите фото <span className="font-medium text-foreground">человека</span> в блоке «Ваш товар»<br/>
-          2. Загрузите фото <span className="font-medium text-foreground">одежды</span> (куртка, платье, рубашка) ниже<br/>
-          3. ИИ виртуально примеряет одежду на человека
+          1. Загрузите фото <span className="font-medium text-foreground">модели</span> в блоке «Ваш товар»<br/>
+          2. Загрузите фото <span className="font-medium text-foreground">одежды</span> по категориям ниже<br/>
+          3. ИИ виртуально примеряет весь образ на модели
         </p>
         <p className="text-xs text-muted-foreground/70 italic">
-          Фото из блока выше используется как референс стиля
+          Можно загрузить 1–5 элементов одежды — ИИ соберёт полный образ
         </p>
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <p className="text-xs font-medium text-foreground">Фото человека (модели)</p>
+          <p className="text-xs font-medium text-foreground">Фото модели</p>
           <span className={`text-xs px-1.5 py-0.5 rounded ${hasPersonPhoto ? "bg-green-500/10 text-green-600" : "bg-muted text-muted-foreground"}`}>
             {hasPersonPhoto ? "✓ Загружено" : "Блок выше ↑"}
           </span>
         </div>
-        <p className="text-xs text-muted-foreground">Загрузите фото человека в блоке «Ваш товар» вверху страницы</p>
+        <p className="text-xs text-muted-foreground">Загрузите фото модели в блоке «Ваш товар» вверху страницы</p>
       </div>
 
-      <div>
-        <p className="text-xs font-medium text-foreground mb-1.5">Фото одежды</p>
-        <input
-          ref={tryonGarmentInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => { handleGarmentSelect(e.target.files); e.target.value = ""; }}
-          data-testid="input-garment"
-        />
-        {tryonGarmentUrl ? (
-          <div className="relative rounded-lg overflow-hidden border border-border">
-            <img src={tryonGarmentUrl} alt="Одежда" className="w-full max-h-48 object-contain rounded-lg" />
-            <button
-              onClick={() => { setTryonGarmentFile(null); setTryonGarmentUrl(null); }}
-              className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-background/80 backdrop-blur-sm border border-border flex items-center justify-center hover:bg-destructive hover:text-destructive-foreground transition-colors"
-              data-testid="button-remove-garment"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => tryonGarmentInputRef.current?.click()}
-            className="w-full rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors py-6 flex flex-col items-center gap-2"
-            data-testid="button-upload-garment"
-          >
-            <ImagePlus className="w-6 h-6 text-muted-foreground/60" />
-            <span className="text-xs text-muted-foreground">Куртка, платье, рубашка...</span>
-          </button>
-        )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => { handleGarmentSelect(e.target.files); e.target.value = ""; }}
+      />
+
+      <div className="space-y-3">
+        {GARMENT_CATEGORIES.map((cat) => {
+          const garment = tryonGarments[cat.id];
+          return (
+            <div key={cat.id}>
+              <p className="text-xs font-medium text-foreground mb-1">{cat.label}</p>
+              {garment.url ? (
+                <div className="relative rounded-lg overflow-hidden border border-border">
+                  <img src={garment.url} alt={cat.label} className="w-full max-h-32 object-contain rounded-lg" />
+                  <button
+                    onClick={() => removeGarment(cat.id)}
+                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-background/80 backdrop-blur-sm border border-border flex items-center justify-center hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                    data-testid={`button-remove-garment-${cat.id}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => openPicker(cat.id)}
+                  className="w-full rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors py-3 flex flex-col items-center gap-1"
+                  data-testid={`button-upload-garment-${cat.id}`}
+                >
+                  <ImagePlus className="w-5 h-5 text-muted-foreground/60" />
+                  <span className="text-xs text-muted-foreground">{cat.examples}</span>
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span className="bg-muted rounded px-2 py-0.5 font-medium text-foreground">Nano Banana 2</span>
-        <span>— ИИ-примерка · {TRYON_STAR_COST} ⭐</span>
+        <span>{hasAnyGarment ? `${Object.values(tryonGarments).filter(g => g.file).length} / 5 элементов` : "— ИИ-примерка · 5 ⭐"}</span>
       </div>
     </div>
   );
@@ -1252,7 +1318,7 @@ function ProcessingView({ generation }: { generation: Generation }) {
     { key: "done", label: "Финальная обработка", desc: "Проверяем и сохраняем видео" },
   ];
   const tryonSteps = [
-    { key: "uploading", label: "Загрузка фото", desc: "Загружаем фото человека и одежды" },
+    { key: "uploading", label: "Загрузка фото", desc: "Загружаем фото модели и одежды" },
     { key: "generating", label: "Примерка (Nano Banana 2)", desc: "ИИ виртуально примеряет одежду. Занимает 1–3 минуты" },
     { key: "done", label: "Готово!", desc: "Примерка сохранена" },
   ];
