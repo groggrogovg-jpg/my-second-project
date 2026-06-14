@@ -771,6 +771,8 @@ function GenerateBlock({
   selectedFiles: File[];
   onGenerate: () => void;
 }) {
+  const hasAnyGarment = Object.values(tryonGarments).some((g) => g.file !== null);
+
   const tabs: { id: ContentTab; label: string; icon: React.ReactNode }[] = [
     { id: "photo", label: "Фото", icon: <Camera className="w-3.5 h-3.5" /> },
     { id: "card", label: "Карточка", icon: <Type className="w-3.5 h-3.5" /> },
