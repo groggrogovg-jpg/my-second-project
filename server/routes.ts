@@ -79,13 +79,12 @@ function getOpenAI(): OpenAI {
 // Маппинг пользовательских названий моделей на реальные ID в Polza.ai
 const POLZA_MODEL_MAP: Record<string, string> = {
   "nano-banana-2":   "google/gemini-3.1-flash-image-preview",
-  "yandex-art":      "yandex/yandex-art",
   "nano-banana-pro": "google/gemini-3-pro-image-preview",
 };
 
 // Маппинг модели на разрешение
 function modelToResolution(model: string): "1K" | "2K" {
-  if (model === "nano-banana-pro" || model === "yandex-art") return "2K";
+  if (model === "nano-banana-pro") return "2K";
   return "1K";
 }
 
@@ -725,7 +724,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ error: "imageUrl и prompt обязательны" });
       }
 
-      const validModelId = modelId === "nano-banana-2" || modelId === "yandex-art" ? modelId : "nano-banana-pro";
+      const validModelId = modelId === "nano-banana-2" || modelId === "nano-banana-pro" ? modelId : "nano-banana-pro";
       console.log(`[edit-background] ▶ START model=${validModelId} prompt="${prompt.substring(0, 60)}..."`);
 
       if (!isTrustedImageUrl(imageUrl)) {

@@ -61,16 +61,6 @@ export const MODELS = [
     cons: "Низкое качество, плохо с русским текстом",
   },
   {
-    id: "yandex-art",
-    name: "Yandex Art",
-    description: "Лучше с русским текстом",
-    stars: 5,
-    resolution: "2K",
-    badge: "Рекомендуем",
-    pros: "Хорошо понимает русские промпты",
-    cons: "Среднее качество изображения",
-  },
-  {
     id: "nano-banana-pro",
     name: "Nano Banana Pro",
     description: "Максимальное качество, 2K",
@@ -127,7 +117,6 @@ export const TRYON_STAR_COST = 5;
 // Стоимость изменения фона через ИИ (совпадает с ценами моделей)
 export const BG_EDIT_STAR_COSTS: Record<ModelId, number> = {
   "nano-banana-2": 3,
-  "yandex-art": 5,
   "nano-banana-pro": 7,
 };
 
