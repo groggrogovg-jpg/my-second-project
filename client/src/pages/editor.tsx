@@ -19,6 +19,11 @@ import {
   CheckCircle2,
   Plus,
   AlignLeft,
+  Move,
+  Eye,
+  Droplet,
+  Sun,
+  Aperture,
 } from "lucide-react";
 import Konva from "konva";
 
@@ -38,6 +43,12 @@ interface CanvasElement {
   bgColor?: string;
   bold?: boolean;
   width?: number;
+  shadowColor?: string;
+  shadowBlur?: number;
+  shadowOpacity?: number;
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
+  bgOpacity?: number;
 }
 
 function proxyUrl(url: string | null | undefined): string | null {
@@ -234,6 +245,11 @@ export default function Editor() {
     setElements(prev => prev.map(e => e.id === editingId ? { ...e, text: editingText } : e));
     setEditingId(null);
     setEditingText("");
+    setTimeout(snapshotTextLayer, 100);
+  };
+
+  const updateEl = (id: string, patch: Partial<CanvasElement>) => {
+    setElements(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e));
     setTimeout(snapshotTextLayer, 100);
   };
 
@@ -510,6 +526,97 @@ export default function Editor() {
               ))}
             </div>
 
+            {selectedId && (
+              <div className="p-3 border-t border-border space-y-3">
+                {(() => {
+                  const el = elements.find(e => e.id === selectedId);
+                  if (!el) return null;
+                  return (
+                    <>
+                      <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Sun className="w-3 h-3" /> Стиль элемента
+                      </p>
+                      {el.bgColor && (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1"><Eye className="w-3 h-3" /> Прозрачность фона</span>
+                            <span className="text-xs text-muted-foreground">{Math.round((el.bgOpacity ?? 0.92) * 100)}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={Math.round((el.bgOpacity ?? 0.92) * 100)}
+                            onChange={(e) => updateEl(el.id, { bgOpacity: parseInt(e.target.value) / 100 })}
+                            className="w-full h-1 accent-primary"
+                          />
+                        </div>
+                      )}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1"><Droplet className="w-3 h-3" /> Цвет тени</span>
+                          <input
+                            type="color"
+                            value={el.shadowColor?.startsWith("#") ? el.shadowColor : "#000000"}
+                            onChange={(e) => updateEl(el.id, { shadowColor: e.target.value })}
+                            className="w-6 h-6 rounded border border-border bg-transparent cursor-pointer"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1"><Aperture className="w-3 h-3" /> Размытие</span>
+                          <span className="text-xs text-muted-foreground">{el.shadowBlur ?? (el.bgColor ? 6 : 4)}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="30"
+                          value={el.shadowBlur ?? (el.bgColor ? 6 : 4)}
+                          onChange={(e) => updateEl(el.id, { shadowBlur: parseInt(e.target.value) })}
+                          className="w-full h-1 accent-primary"
+                        />
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1"><Eye className="w-3 h-3" /> Насыщенность тени</span>
+                          <span className="text-xs text-muted-foreground">{Math.round((el.shadowOpacity ?? 1) * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={Math.round((el.shadowOpacity ?? 1) * 100)}
+                          onChange={(e) => updateEl(el.id, { shadowOpacity: parseInt(e.target.value) / 100 })}
+                          className="w-full h-1 accent-primary"
+                        />
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1"><Move className="w-3 h-3" /> Смещение X</span>
+                          <span className="text-xs text-muted-foreground">{el.shadowOffsetX ?? 0}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="-20"
+                          max="20"
+                          value={el.shadowOffsetX ?? 0}
+                          onChange={(e) => updateEl(el.id, { shadowOffsetX: parseInt(e.target.value) })}
+                          className="w-full h-1 accent-primary"
+                        />
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1"><Move className="w-3 h-3" /> Смещение Y</span>
+                          <span className="text-xs text-muted-foreground">{el.shadowOffsetY ?? (el.bgColor ? 2 : 1)}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="-20"
+                          max="20"
+                          value={el.shadowOffsetY ?? (el.bgColor ? 2 : 1)}
+                          onChange={(e) => updateEl(el.id, { shadowOffsetY: parseInt(e.target.value) })}
+                          className="w-full h-1 accent-primary"
+                        />
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
             <div className="p-3 border-t border-border space-y-1.5">
               <Button size="sm" variant="outline" className="w-full justify-start" onClick={addText} data-testid="sidebar-add-text">
                 <Type className="w-3.5 h-3.5 mr-2" />
@@ -575,10 +682,12 @@ function CanvasElementNode({
           height={boxH}
           fill={el.bgColor}
           cornerRadius={el.kind === "cta" ? 8 : 6}
-          opacity={0.92}
-          shadowColor="rgba(0,0,0,0.3)"
-          shadowBlur={6}
-          shadowOffsetY={2}
+          opacity={el.bgOpacity ?? 0.92}
+          shadowColor={el.shadowColor || "rgba(0,0,0,0.3)"}
+          shadowBlur={el.shadowBlur ?? 6}
+          shadowOffsetX={el.shadowOffsetX ?? 0}
+          shadowOffsetY={el.shadowOffsetY ?? 2}
+          shadowOpacity={el.shadowOpacity ?? 1}
         />
       )}
       <Text
@@ -592,9 +701,11 @@ function CanvasElementNode({
         fill={el.fill || "#ffffff"}
         lineHeight={1.3}
         wrap="word"
-        shadowColor="rgba(0,0,0,0.5)"
-        shadowBlur={el.bgColor ? 0 : 4}
-        shadowOffsetY={el.bgColor ? 0 : 1}
+        shadowColor={el.shadowColor || "rgba(0,0,0,0.5)"}
+        shadowBlur={el.shadowBlur ?? (el.bgColor ? 0 : 4)}
+        shadowOffsetX={el.shadowOffsetX ?? 0}
+        shadowOffsetY={el.shadowOffsetY ?? (el.bgColor ? 0 : 1)}
+        shadowOpacity={el.shadowOpacity ?? 1}
       />
     </Group>
   );

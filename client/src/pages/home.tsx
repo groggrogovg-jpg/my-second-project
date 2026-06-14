@@ -985,9 +985,9 @@ function TryonTabContent({
         </p>
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <p className="text-xs font-medium text-foreground">Фото модели</p>
+      <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-foreground">1. Модель человека</p>
           <span className={`text-xs px-1.5 py-0.5 rounded ${hasPersonPhoto ? "bg-green-500/10 text-green-600" : "bg-muted text-muted-foreground"}`}>
             {hasPersonPhoto ? "✓ Загружено" : "Блок выше ↑"}
           </span>
@@ -995,44 +995,53 @@ function TryonTabContent({
         <p className="text-xs text-muted-foreground">Загрузите фото модели в блоке «Ваш товар» вверху страницы</p>
       </div>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => { handleGarmentSelect(e.target.files); e.target.value = ""; }}
-      />
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-foreground">2. Одежда</p>
+          <span className="text-xs text-muted-foreground">
+            {Object.values(tryonGarments).filter(g => g.file).length} / 5 вещей
+          </span>
+        </div>
 
-      <div className="space-y-3">
-        {GARMENT_CATEGORIES.map((cat) => {
-          const garment = tryonGarments[cat.id];
-          return (
-            <div key={cat.id}>
-              <p className="text-xs font-medium text-foreground mb-1">{cat.label}</p>
-              {garment.url ? (
-                <div className="relative rounded-lg overflow-hidden border border-border">
-                  <img src={garment.url} alt={cat.label} className="w-full max-h-32 object-contain rounded-lg" />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => { handleGarmentSelect(e.target.files); e.target.value = ""; }}
+        />
+
+        <div className="space-y-3">
+          {GARMENT_CATEGORIES.map((cat) => {
+            const garment = tryonGarments[cat.id];
+            return (
+              <div key={cat.id}>
+                <p className="text-xs font-medium text-foreground mb-1">{cat.label}</p>
+                {garment.url ? (
+                  <div className="relative rounded-lg overflow-hidden border border-border">
+                    <img src={garment.url} alt={cat.label} className="w-full max-h-32 object-contain rounded-lg" />
+                    <button
+                      onClick={() => removeGarment(cat.id)}
+                      className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-background/80 backdrop-blur-sm border border-border flex items-center justify-center hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                      data-testid={`button-remove-garment-${cat.id}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
                   <button
-                    onClick={() => removeGarment(cat.id)}
-                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-background/80 backdrop-blur-sm border border-border flex items-center justify-center hover:bg-destructive hover:text-destructive-foreground transition-colors"
-                    data-testid={`button-remove-garment-${cat.id}`}
+                    onClick={() => openPicker(cat.id)}
+                    className="w-full rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors py-3 flex flex-col items-center gap-1"
+                    data-testid={`button-upload-garment-${cat.id}`}
                   >
-                    <X className="w-3 h-3" />
+                    <ImagePlus className="w-5 h-5 text-muted-foreground/60" />
+                    <span className="text-xs text-muted-foreground">{cat.examples}</span>
                   </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => openPicker(cat.id)}
-                  className="w-full rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors py-3 flex flex-col items-center gap-1"
-                  data-testid={`button-upload-garment-${cat.id}`}
-                >
-                  <ImagePlus className="w-5 h-5 text-muted-foreground/60" />
-                  <span className="text-xs text-muted-foreground">{cat.examples}</span>
-                </button>
-              )}
-            </div>
-          );
-        })}
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <div className="flex items-center justify-between text-xs text-muted-foreground">
