@@ -114,10 +114,10 @@ export const INITIAL_STARS = 10;
 export const VIDEO_STAR_COSTS: Record<5 | 10, number> = { 5: 5, 10: 10 };
 export const TRYON_STAR_COST = 5;
 
-// Стоимость изменения фона через ИИ (совпадает с ценами моделей)
+// Стоимость изменения фона через ИИ — фиксированная цена
 export const BG_EDIT_STAR_COSTS: Record<ModelId, number> = {
-  "nano-banana-2": 3,
-  "nano-banana-pro": 7,
+  "nano-banana-2": 5,
+  "nano-banana-pro": 5,
 };
 
 export const TEST_MODE = false;

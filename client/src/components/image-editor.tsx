@@ -273,10 +273,13 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageUrl: imageUrl, prompt: bgPrompt.trim(), modelId: bgModel }),
       });
-      const data = await resp.json();
       if (!resp.ok) {
-        throw new Error(data.error || "Ошибка замены фона");
+        const text = await resp.text();
+        let msg = text;
+        try { const d = JSON.parse(text); msg = d.error || text; } catch {}
+        throw new Error(msg || "Ошибка замены фона");
       }
+      const data = await resp.json();
       // Загружаем новое изображение
       const newImg = new window.Image();
       newImg.crossOrigin = "anonymous";
@@ -306,12 +309,10 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
             <ImageIcon className="w-3.5 h-3.5 mr-1.5" />
             {bgGenerating ? "Генерация..." : `Изменить фон ${BG_EDIT_STAR_COSTS[bgModel]} ⭐`}
           </Button>
-          {elements.length > 0 && (
-            <Button size="sm" onClick={handleExport} disabled={saving}>
-              <Download className="w-3.5 h-3.5 mr-1.5" />
-              {saving ? "Сохраняем..." : "Скачать"}
-            </Button>
-          )}
+          <Button size="sm" onClick={handleExport} disabled={saving}>
+            <Download className="w-3.5 h-3.5 mr-1.5" />
+            {saving ? "Сохраняем..." : "Скачать"}
+          </Button>
           <Button size="sm" variant="outline" onClick={onClose}>
             <X className="w-3.5 h-3.5 mr-1.5" />
             Закрыть
