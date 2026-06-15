@@ -757,6 +757,64 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ===== ИИ ПОДБИРАЕТ ФОН =====
+  app.post("/api/suggest-background", async (req: Request, res: Response) => {
+    try {
+      const { imageUrl } = req.body as { imageUrl: string };
+      if (!imageUrl) {
+        return res.status(400).json({ error: "imageUrl обязателен" });
+      }
+      if (!isTrustedImageUrl(imageUrl)) {
+        return res.status(400).json({ error: "Недопустимый URL изображения" });
+      }
+
+      let imageBuffer: Buffer;
+      let mimeType = "image/jpeg";
+
+      if (imageUrl.startsWith("data:")) {
+        const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+        if (match) {
+          mimeType = match[1];
+          imageBuffer = Buffer.from(match[2], "base64");
+        } else {
+          return res.status(400).json({ error: "Неверный формат data URL" });
+        }
+      } else {
+        const resp = await axios.get(imageUrl, { responseType: "arraybuffer", timeout: 15000 });
+        imageBuffer = Buffer.from(resp.data);
+        mimeType = resp.headers["content-type"] || "image/jpeg";
+      }
+
+      const base64 = imageBuffer.toString("base64");
+      const systemPrompt = `You are a top product photography specialist. Analyze the product image and suggest a single, vivid background description for a professional product photo. The description should be concise (3–5 phrases), in English, and suited for AI image generation. Avoid mentioning any text, labels, or watermarks. Only describe the background scene, lighting, and atmosphere. Example: "clean white seamless studio backdrop, soft diffused lighting, subtle shadows, minimalistic, professional e-commerce look". Return ONLY the background description — no extra commentary, no formatting.`;
+
+      const response = await getOpenAI().chat.completions.create({
+        model: "openai/gpt-5.4-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}`, detail: "high" } },
+              { type: "text", text: "Suggest a professional background for this product. Return only the background description, no other text." },
+            ],
+          },
+        ],
+        max_tokens: 300,
+        temperature: 0.8,
+      });
+
+      const suggestion = (response.choices[0]?.message?.content || "").trim();
+      console.log(`[suggest-background] ✓ suggestion="${suggestion.substring(0, 80)}..."`);
+      res.json({ suggestion });
+    } catch (err: any) {
+      const axiosDetail = err?.response?.data ? ` [${JSON.stringify(err.response.data)}]` : "";
+      const message = err.message || "Неизвестная ошибка";
+      console.error(`[suggest-background] ✗ ERROR: ${message}${axiosDetail}`);
+      res.status(500).json({ error: message + axiosDetail });
+    }
+  });
+
   // ===== ЗАМЕНА ФОНА КАРТОЧКИ ЧЕРЕЗ ИИ =====
   app.post("/api/edit-background", async (req: Request, res: Response) => {
     try {

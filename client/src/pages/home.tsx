@@ -746,6 +746,9 @@ function GenerateBlock({
   activeTab, setActiveTab,
   notes, setNotes,
   selectedModel, setSelectedModel,
+  selectedFormat, handleFormatSelect,
+  creativity, setCreativity,
+  advancedOpen, setAdvancedOpen,
   videoDuration, setVideoDuration,
   videoLooping, setVideoLooping,
   videoCardMode, setVideoCardMode,
@@ -758,6 +761,9 @@ function GenerateBlock({
   activeTab: ContentTab; setActiveTab: (t: ContentTab) => void;
   notes: string; setNotes: (v: string) => void;
   selectedModel: ModelId; setSelectedModel: (m: ModelId) => void;
+  selectedFormat: FormatId; handleFormatSelect: (f: FormatId) => void;
+  creativity: number; setCreativity: (v: number) => void;
+  advancedOpen: boolean; setAdvancedOpen: (v: boolean) => void;
   videoDuration: VideoDuration; setVideoDuration: (v: VideoDuration) => void;
   videoLooping: boolean; setVideoLooping: (v: boolean) => void;
   videoCardMode: boolean; setVideoCardMode: (v: boolean) => void;

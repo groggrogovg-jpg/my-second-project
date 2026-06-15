@@ -65,6 +65,8 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
   const [bgPrompt, setBgPrompt] = useState("");
   const [bgGenerating, setBgGenerating] = useState(false);
   const [bgModel, setBgModel] = useState<ModelId>("nano-banana-pro");
+  const [bgSuggesting, setBgSuggesting] = useState(false);
+  const [bgSuggestion, setBgSuggestion] = useState<string>("");
 
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
@@ -234,6 +236,29 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
     }
   };
 
+  const handleSuggestBackground = async () => {
+    setBgSuggesting(true);
+    setBgSuggestion("");
+    try {
+      const resp = await fetch("/api/suggest-background", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: imageUrl }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.error || "Ошибка генерации идеи");
+      }
+      const suggestion = data.suggestion || "";
+      setBgSuggestion(suggestion);
+      setBgPrompt(suggestion);
+    } catch (err: any) {
+      alert(err.message || "Ошибка генерации идеи");
+    } finally {
+      setBgSuggesting(false);
+    }
+  };
+
   const handleEditBackground = async () => {
     if (!bgPrompt.trim()) return;
     const cost = BG_EDIT_STAR_COSTS[bgModel];
@@ -262,6 +287,7 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
       newImg.src = data.url;
       setBgEditorOpen(false);
       setBgPrompt("");
+      setBgSuggestion("");
       onStarsChange?.(stars - cost);
     } catch (err: any) {
       alert(err.message || "Ошибка замены фона");
@@ -553,9 +579,28 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
               <X className="w-4 h-4" />
             </button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Опишите новый фон на естественном языке. Например: «белый бесшовный фон, студийное освещение»
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Опишите новый фон на естественном языке. Например: «белый бесшовный фон, студийное освещение»
+            </p>
+            <button
+              onClick={handleSuggestBackground}
+              disabled={bgSuggesting || bgGenerating}
+              className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors disabled:opacity-50 flex-shrink-0 ml-2"
+            >
+              {bgSuggesting ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Идея...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3 h-3" />
+                  ИИ подбирает фон
+                </>
+              )}
+            </button>
+          </div>
           <textarea
             value={bgPrompt}
             onChange={e => setBgPrompt(e.target.value)}
