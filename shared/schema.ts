@@ -57,7 +57,8 @@ export const MODELS = [
     stars: 3,
     resolution: "1K",
     badge: "Эконом",
-    pros: "Дешёво, быстро",
+    pricePerCard: 40,
+    pros: "Дёшево, быстро",
     cons: "Низкое качество, плохо с русским текстом",
   },
   {
@@ -67,6 +68,7 @@ export const MODELS = [
     stars: 7,
     resolution: "2K",
     badge: "Премиум",
+    pricePerCard: 60,
     pros: "Максимальное качество, 2K",
     cons: "Дорого, может плохо с русским текстом",
   },
@@ -109,12 +111,12 @@ export const ASPECT_RATIOS = [
 
 export type AspectRatioId = (typeof ASPECT_RATIOS)[number]["id"];
 
-export const INITIAL_STARS = 10;
+export const TRIAL_LIMIT = 5;
 
+export const INITIAL_STARS = 10;
 export const VIDEO_STAR_COSTS: Record<5 | 10, number> = { 5: 5, 10: 10 };
 export const TRYON_STAR_COST = 5;
 
-// Стоимость изменения фона через ИИ — фиксированная цена
 export const BG_EDIT_STAR_COSTS: Record<ModelId, number> = {
   "nano-banana-2": 5,
   "nano-banana-pro": 5,
@@ -133,6 +135,37 @@ export function starsToGenerations(stars: number) {
     nano2: Math.floor(stars / 3),
   };
 }
+
+export const NANO2_PACKAGES = [
+  { id: "nano2-5", cards: 5, price: 199, perCard: 39.8, saving: 0, popular: false },
+  { id: "nano2-10", cards: 10, price: 379, perCard: 37.9, saving: 5, popular: true },
+  { id: "nano2-50", cards: 50, price: 1790, perCard: 35.8, saving: 10, popular: false },
+  { id: "nano2-100", cards: 100, price: 3490, perCard: 34.9, saving: 13, popular: false },
+] as const;
+
+export const PRO_PACKAGES = [
+  { id: "pro-5", cards: 5, price: 299, perCard: 59.8, saving: 0, popular: false },
+  { id: "pro-10", cards: 10, price: 579, perCard: 57.9, saving: 3, popular: true },
+  { id: "pro-50", cards: 50, price: 2790, perCard: 55.8, saving: 7, popular: false },
+  { id: "pro-100", cards: 100, price: 5490, perCard: 54.9, saving: 8, popular: false },
+] as const;
+
+export const MARKETPLACE_FORMATS = [
+  { id: "wb", name: "Wildberries", ratio: "3:4", width: 900, height: 1200, maxMb: 10, hint: "" },
+  { id: "ozon", name: "Ozon", ratio: "3:4", width: 900, height: 1200, maxMb: 10, hint: "" },
+  {
+    id: "yandex",
+    name: "Яндекс Маркет",
+    ratio: "3:4",
+    width: 878,
+    height: 1170,
+    maxMb: 10,
+    hint: "Также поддерживается 1:1 (1040×1440). Рекомендуем 3:4.",
+  },
+  { id: "kaspi", name: "Kaspi.kz", ratio: "1:1", width: 500, height: 500, maxMb: 25, hint: "Мин. 500×500, макс. 5000×5000 px." },
+] as const;
+
+export type MarketplaceFormatId = (typeof MARKETPLACE_FORMATS)[number]["id"];
 
 export const PRICING_PLANS = [
   {

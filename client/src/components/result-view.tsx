@@ -21,7 +21,9 @@ import {
   Pencil,
   Sparkles,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
+import { Link } from "wouter";
 
 interface ResultViewProps {
   generation: Generation;
@@ -29,11 +31,10 @@ interface ResultViewProps {
   onAnimateVideo?: (imageUrl: string) => void;
   animatingVideo?: boolean;
   onRegenerationComplete?: (id: string) => void;
-  stars: number;
-  onStarsChange?: (n: number) => void;
+  isTrial?: boolean;
 }
 
-export default function ResultView({ generation, onNewGeneration, onAnimateVideo, animatingVideo, onRegenerationComplete, stars, onStarsChange }: ResultViewProps) {
+export default function ResultView({ generation, onNewGeneration, onAnimateVideo, animatingVideo, onRegenerationComplete, isTrial = false }: ResultViewProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -57,6 +58,9 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
 
   const handleDownload = async () => {
     if (!mediaUrl) return;
+    if (isTrial) {
+      return;
+    }
     setDownloading(true);
     try {
       const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`;
@@ -89,7 +93,6 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
       if (!resp.ok) {
         throw new Error(data.error || "Ошибка перегенерации");
       }
-      // Запускаем поллинг нового статуса
       onRegenerationComplete?.(generation.id);
     } catch (err: any) {
       alert(err.message || "Ошибка перегенерации");
@@ -105,7 +108,7 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
   return (
     <>
       {editorOpen && mediaUrl && (
-        <ImageEditor imageUrl={mediaUrl} onClose={() => setEditorOpen(false)} stars={stars} onStarsChange={onStarsChange} />
+        <ImageEditor imageUrl={mediaUrl} onClose={() => setEditorOpen(false)} stars={0} onStarsChange={() => {}} />
       )}
       {textEditorOpen && analysis && (
         <TextEditor
@@ -127,9 +130,14 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
                   {generation.aspectRatio}
                 </Badge>
               )}
+              {isTrial && (
+                <Badge variant="outline" className="text-xs border-amber-400 text-amber-600 bg-amber-500/10">
+                  Пробная версия
+                </Badge>
+              )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {canEdit && (
+              {canEdit && !isTrial && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -140,21 +148,24 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
                   Редактировать
                 </Button>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(mediaUrl!, "_blank")}
-                data-testid="button-open"
-              >
-                <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
-                Открыть
-              </Button>
+              {!isTrial && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(mediaUrl!, "_blank")}
+                  data-testid="button-open"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                  Открыть
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleDownload}
-                disabled={downloading}
+                disabled={downloading || isTrial}
                 data-testid="button-download"
+                title={isTrial ? "Скачивание доступно только для оплаченных пакетов" : undefined}
               >
                 <Download className="w-3.5 h-3.5 mr-1.5" />
                 {downloading ? "Скачиваем..." : "Скачать"}
@@ -171,7 +182,7 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
           </div>
 
           <div className="p-4">
-            <div className="rounded-lg overflow-hidden bg-muted flex items-center justify-center" style={{ minHeight: 320 }}>
+            <div className="relative rounded-lg overflow-hidden bg-muted flex items-center justify-center" style={{ minHeight: 320 }}>
               {mediaUrl ? (
                 isVideo ? (
                   <video
@@ -183,12 +194,29 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
                     data-testid="video-result"
                   />
                 ) : (
-                  <img
-                    src={mediaUrl}
-                    alt={isTryon ? "Примерка одежды" : "Готовая карточка товара"}
-                    className="w-full h-full object-contain max-h-[520px]"
-                    data-testid="img-result"
-                  />
+                  <>
+                    <img
+                      src={mediaUrl}
+                      alt={isTryon ? "Примерка одежды" : "Готовая карточка товара"}
+                      className="w-full h-full object-contain max-h-[520px]"
+                      data-testid="img-result"
+                    />
+                    {isTrial && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+                        <div
+                          className="text-white/40 font-bold text-2xl sm:text-4xl tracking-wider"
+                          style={{
+                            transform: "rotate(-30deg)",
+                            textShadow: "0 1px 3px rgba(0,0,0,0.5)",
+                            whiteSpace: "nowrap",
+                            userSelect: "none",
+                          }}
+                        >
+                          КардоМатик
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )
               ) : (
                 <div className="text-center text-muted-foreground text-sm p-8">
@@ -196,6 +224,23 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
                 </div>
               )}
             </div>
+
+            {isTrial && (
+              <div className="mt-3 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 flex items-start gap-3">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-amber-700">Пробная версия с водяным знаком</p>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    Зарегистрируйтесь и купите пакет — получите карточку без водяного знака и возможность скачать.
+                  </p>
+                  <Link href="/pricing">
+                    <button className="mt-2 text-xs font-semibold text-amber-700 hover:text-amber-800 underline underline-offset-2">
+                      Купить пакет →
+                    </button>
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
         </Card>
 
@@ -206,21 +251,23 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
                 <Target className="w-4 h-4 text-primary flex-shrink-0" />
                 <h3 className="font-semibold text-foreground">Маркетинговый анализ GPT-4o</h3>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setTextEditorOpen(true)}
-                disabled={isRegenerating}
-                data-testid="button-edit-text"
-                className="h-7 text-xs gap-1 text-muted-foreground hover:text-primary"
-              >
-                {isRegenerating ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="w-3.5 h-3.5" />
-                )}
-                {isRegenerating ? "Генерация..." : "Изменить текст"}
-              </Button>
+              {!isTrial && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setTextEditorOpen(true)}
+                  disabled={isRegenerating}
+                  data-testid="button-edit-text"
+                  className="h-7 text-xs gap-1 text-muted-foreground hover:text-primary"
+                >
+                  {isRegenerating ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  {isRegenerating ? "Генерация..." : "Изменить текст"}
+                </Button>
+              )}
             </div>
 
             <div className="space-y-1">

@@ -2,10 +2,12 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Stage, Layer, Image as KonvaImage, Text, Rect, Transformer, Group } from "react-konva";
-import type { Generation, GptAnalysis } from "@shared/schema";
+import type { Generation, GptAnalysis, MarketplaceFormatId } from "@shared/schema";
+import { MARKETPLACE_FORMATS } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft,
   Download,
@@ -24,6 +26,7 @@ import {
   Droplet,
   Sun,
   Aperture,
+  Crop,
 } from "lucide-react";
 import Konva from "konva";
 
@@ -404,6 +407,8 @@ export default function Editor() {
           ))}
         </div>
 
+        <MarketplaceFormatPanel />
+
         <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 flex-1">
           <div className="flex-1 rounded-lg border border-border bg-card overflow-hidden flex flex-col">
             <div className="px-4 py-2.5 border-b border-border bg-muted/40 flex items-center gap-2">
@@ -636,6 +641,63 @@ export default function Editor() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MarketplaceFormatPanel() {
+  const [selected, setSelected] = useState<MarketplaceFormatId | null>(null);
+  const { toast } = useToast();
+
+  const handleApply = () => {
+    const fmt = MARKETPLACE_FORMATS.find((f) => f.id === selected);
+    if (!fmt) return;
+    toast({
+      title: `Формат ${fmt.name} применён`,
+      description: `${fmt.width}×${fmt.height} px (${fmt.ratio})${fmt.hint ? " · " + fmt.hint : ""}`,
+    });
+  };
+
+  const selectedFmt = MARKETPLACE_FORMATS.find((f) => f.id === selected);
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3 sm:p-4">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <Crop className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium text-foreground">Формат маркетплейса</span>
+        </div>
+        {selectedFmt && (
+          <button
+            onClick={handleApply}
+            className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md font-medium hover:bg-primary/90 transition-colors"
+            data-testid="button-apply-format"
+          >
+            Применить формат
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {MARKETPLACE_FORMATS.map((fmt) => (
+          <button
+            key={fmt.id}
+            onClick={() => setSelected(selected === fmt.id ? null : fmt.id)}
+            data-testid={`format-${fmt.id}`}
+            className={`flex flex-col items-center gap-1 rounded-lg border px-3 py-2 text-xs transition-all min-w-[90px] ${
+              selected === fmt.id
+                ? "border-primary bg-primary/5 ring-1 ring-primary text-foreground"
+                : "border-border bg-muted/20 hover:border-primary/40 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <span className="font-semibold text-foreground text-sm leading-tight">{fmt.name}</span>
+            <span className="text-primary font-medium">{fmt.ratio}</span>
+            <span className="text-[10px] text-muted-foreground">{fmt.width}×{fmt.height}</span>
+          </button>
+        ))}
+      </div>
+      {selectedFmt?.hint && (
+        <p className="mt-2 text-xs text-muted-foreground bg-muted/50 rounded-md px-2.5 py-1.5">{selectedFmt.hint}</p>
+      )}
     </div>
   );
 }

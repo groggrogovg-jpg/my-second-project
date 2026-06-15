@@ -192,7 +192,11 @@ async function pollPolzaMedia(jobId: string, apiKey: string): Promise<string> {
   throw new Error("Polza.ai timeout: генерация заняла слишком много времени");
 }
 
-async function analyzeWithGpt(imageBase64: string, mimeType: string, notes?: string): Promise<any> {
+async function analyzeWithGpt(imageBase64: string, mimeType: string, notes?: string, noText?: boolean): Promise<any> {
+  const promptField = noText
+    ? `"prompt": "Детальный промпт на английском для нейросети (описание того, как оформить фото товара в профессиональную карточку для маркетплейса, включая: стиль фона, цветовую схему, эффекты освещения, тени, декоративные элементы. ВАЖНО: без каких-либо текстовых надписей, заголовков и плашек с текстом — только товар и фон)"`
+    : `"prompt": "Детальный промпт на английском для нейросети (описание того, как изменить и оформить фото товара в профессиональную карточку для маркетплейса, включая: стиль фона, цветовую схему, расположение текстовых блоков, инфографику, логотип место, эффекты освещения, тени. Текст в карточке должен быть на РУССКОМ языке)"`;
+
   const systemPrompt = `Ты — топ-маркетолог мирового уровня и эксперт по созданию карточек товаров для маркетплейсов. 
 Твоя задача: проанализировать фото товара и создать мощное продающее описание, а также написать детальный промпт для нейросети, которая создаст профессиональную карточку товара.
 
@@ -203,7 +207,7 @@ async function analyzeWithGpt(imageBase64: string, mimeType: string, notes?: str
   "benefits": ["Преимущество 1", "Преимущество 2", "Преимущество 3", "Преимущество 4"],
   "callToAction": "Призыв к действию (до 30 символов)",
   "designStyle": "Описание стиля дизайна карточки",
-  "prompt": "Детальный промпт на английском для нейросети (описание того, как изменить и оформить фото товара в профессиональную карточку для маркетплейса, включая: стиль фона, цветовую схему, расположение текстовых блоков, инфографику, логотип место, эффекты освещения, тени. Текст в карточке должен быть на РУССКОМ языке)"
+  ${promptField}
 }`;
 
   // openai/gpt-5.4-mini — vision LLM Polza.ai (gpt-4o там нет, используем их аналог)
@@ -266,11 +270,21 @@ async function generateCardWithPolza(
   prompt: string,
   aspectRatio: string = "1:1",
   model: string = "nano-banana-2",
+  noText: boolean = false,
 ): Promise<string> {
   const polzaModelId = POLZA_MODEL_MAP[model] || POLZA_MODEL_MAP["nano-banana-2"];
   const resolution = modelToResolution(model);
 
-  const fullPrompt = `${prompt}
+  const fullPrompt = noText
+    ? `${prompt}
+
+Important requirements:
+- Create a professional marketplace product card based on the provided photo
+- Use modern clean design with gradient or white background
+- Beautiful product showcase with perfect lighting and shadows
+- NO text, NO text overlays, NO captions, NO labels, NO badges with text anywhere in the image
+- Only the product and a clean, professional background`
+    : `${prompt}
 
 Important requirements:
 - Create a professional marketplace product card based on the provided photo
@@ -416,9 +430,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const model = (req.body?.model as string) || "nano-banana-pro";
       const aspectRatio = (req.body?.aspectRatio as string) || "1:1";
       const notes = (req.body?.notes as string) || "";
+      const noText = req.body?.noText === "true";
       const resolution = model === "nano-banana-2" ? "1K" : "2K";
 
-      console.log(`[generate] ▶ START file=${filename} size=${imageBuffer.length}b model=${model} ratio=${aspectRatio} notes="${notes.substring(0, 50)}${notes.length > 50 ? "..." : ""}"`);
+      console.log(`[generate] ▶ START file=${filename} size=${imageBuffer.length}b model=${model} ratio=${aspectRatio} noText=${noText} notes="${notes.substring(0, 50)}${notes.length > 50 ? "..." : ""}"`);
 
       const generation = await storage.createGeneration({
         originalImageUrl: imageDataUrl,
@@ -436,7 +451,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       (async () => {
         try {
           console.log(`[generate] ▶ GPT-4o analysis starting for id=${generation.id}...`);
-          const analysis = await analyzeWithGpt(imageBase64, mimeType, notes);
+          const analysis = await analyzeWithGpt(imageBase64, mimeType, notes, noText);
           console.log(`[generate] ✓ GPT analysis done title="${analysis.title}" designStyle="${analysis.designStyle}"`);
 
           await storage.updateGeneration(generation.id, {
@@ -448,7 +463,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           await storage.updateGeneration(generation.id, { status: "generating" });
           console.log(`[generate] ✓ Status → generating, calling Polza.ai...`);
 
-          const resultUrl = await generateCardWithPolza(imageBuffer, filename, mimeType, analysis.prompt, aspectRatio, model);
+          const resultUrl = await generateCardWithPolza(imageBuffer, filename, mimeType, analysis.prompt, aspectRatio, model, noText);
           await storage.updateGeneration(generation.id, { status: "done", resultImageUrl: resultUrl });
           console.log(`[generate] ✓ Polza.ai done id=${generation.id} url=${resultUrl.substring(0, 80)}...`);
 

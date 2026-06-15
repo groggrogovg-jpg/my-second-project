@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Sparkles, ArrowRight, Upload, Settings2, ImageDown, CheckCircle2, Layers, Shirt, Wand2 } from "lucide-react";
+import { Sparkles, ArrowRight, Upload, Settings2, ImageDown, CheckCircle2, Layers, Shirt, Wand2, Mail, MessageCircle, Phone } from "lucide-react";
 
 export default function Landing() {
   return (
@@ -14,12 +14,15 @@ export default function Landing() {
             <span className="text-xs text-muted-foreground hidden md:block">ИИ-генератор карточек</span>
           </div>
           <nav className="flex items-center gap-4">
+            <a href="#before-after" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
+              Примеры
+            </a>
             <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               Тарифы
             </Link>
             <Link href="/app">
               <button className="text-sm bg-primary text-primary-foreground px-4 py-1.5 rounded-lg font-medium hover:bg-primary/90 transition-colors">
-                Войти
+                Попробовать
               </button>
             </Link>
           </nav>
@@ -65,7 +68,7 @@ export default function Landing() {
           </div>
 
           <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground flex-wrap">
-            {["Бесплатный план", "Без навыков дизайна", "Готово за 2 минуты"].map((label) => (
+            {["5 карточек бесплатно", "Без навыков дизайна", "Готово за 2 минуты"].map((label) => (
               <span key={label} className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
                 {label}
@@ -120,6 +123,63 @@ export default function Landing() {
           </div>
         </section>
 
+        <section id="before-after" className="max-w-6xl mx-auto px-3 sm:px-6 py-10 sm:py-16">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-1.5 bg-primary/10 text-primary text-xs font-medium px-3 py-1.5 rounded-full mb-4 border border-primary/20">
+              <Sparkles className="w-3 h-3" />
+              Реальные примеры
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">До и После</h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">
+              Смотрите, как обычное фото превращается в профессиональную карточку маркетплейса
+            </p>
+          </div>
+
+          <div className="space-y-8">
+            {[
+              { label: "Крем для рук", before: "Обычное фото на столе", after: "Профессиональная карточка WB" },
+              { label: "Кроссовки", before: "Фото на белом фоне", after: "Стильная карточка с инфографикой" },
+            ].map((item, idx) => (
+              <div key={idx} className="grid grid-cols-2 gap-4 sm:gap-8 items-center">
+                <div className="space-y-2">
+                  <div className="rounded-xl border border-border bg-muted/40 aspect-square flex flex-col items-center justify-center gap-3 p-6">
+                    <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-xl bg-muted border border-border flex items-center justify-center">
+                      <Upload className="w-6 h-6 sm:w-8 sm:h-8 text-muted-foreground/40" />
+                    </div>
+                    <span className="text-xs sm:text-sm text-muted-foreground text-center">{item.before}</span>
+                  </div>
+                  <p className="text-xs text-center text-muted-foreground font-medium">До</p>
+                </div>
+
+                <div className="space-y-2 relative">
+                  <div className="rounded-xl border-2 border-primary/40 bg-primary/5 aspect-square flex flex-col items-center justify-center gap-3 p-6 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-violet-500/5" />
+                    <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center relative z-10">
+                      <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-primary/60" />
+                    </div>
+                    <span className="text-xs sm:text-sm text-foreground text-center font-medium relative z-10">{item.after}</span>
+                    <div className="absolute bottom-2 right-2 z-10">
+                      <span className="text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded-md font-medium">КардоМатик</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-center text-primary font-semibold">После ✨</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-8 text-center">
+            <div className="inline-flex items-center gap-3 bg-muted/50 rounded-xl border border-border px-5 py-3 text-sm text-muted-foreground">
+              <span>Скоро добавим реальные примеры наших клиентов</span>
+              <Link href="/app">
+                <button className="text-primary font-medium hover:underline underline-offset-2">
+                  Создать свою →
+                </button>
+              </Link>
+            </div>
+          </div>
+        </section>
+
         <section className="max-w-6xl mx-auto px-3 sm:px-6 py-10 sm:py-16">
           <div className="text-center mb-12">
             <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">Всё что нужно для маркетплейса</h2>
@@ -132,21 +192,21 @@ export default function Landing() {
                 color: "bg-violet-500/10 border-violet-500/20",
                 title: "Карточка товара",
                 desc: "ИИ анализирует фото и создаёт профессиональную карточку с текстами, инфографикой и идеальным фоном для Wildberries, Ozon и Яндекс Маркет",
-                badge: "от 3 ⭐",
+                badge: "40–60 ₽",
               },
               {
                 icon: <Shirt className="w-7 h-7 text-sky-500" />,
                 color: "bg-sky-500/10 border-sky-500/20",
                 title: "Примерка одежды",
                 desc: "Виртуально наденьте одежду на модель — загрузите фото человека и одежды, ИИ сделает профессиональную фотосессию без съёмки",
-                badge: "5 ⭐",
+                badge: "Скоро",
               },
               {
                 icon: <Wand2 className="w-7 h-7 text-emerald-500" />,
                 color: "bg-emerald-500/10 border-emerald-500/20",
                 title: "Смена фона",
                 desc: "Замените фон готовой карточки одним кликом — студийный белый, природа, абстракция или любой другой через текстовый промпт",
-                badge: "от 3 ⭐",
+                badge: "В редакторе",
               },
             ].map((feature) => (
               <div key={feature.title} className="rounded-2xl border border-border bg-background p-6 flex flex-col gap-4 hover:shadow-md transition-shadow">
@@ -171,7 +231,7 @@ export default function Landing() {
               Попробуйте прямо сейчас
             </h2>
             <p className="text-white/80 mb-8 text-base">
-              10 звёзд бесплатно при регистрации — хватит на несколько карточек
+              5 карточек бесплатно — без регистрации и карты
             </p>
             <Link href="/app">
               <button
@@ -182,6 +242,57 @@ export default function Landing() {
                 <ArrowRight className="w-4 h-4" />
               </button>
             </Link>
+          </div>
+        </section>
+
+        <section id="contacts" className="max-w-6xl mx-auto px-3 sm:px-6 py-10 sm:py-16">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">Контакты</h2>
+            <p className="text-muted-foreground">Есть вопросы? Мы на связи — ответим быстро</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+            {[
+              {
+                icon: <Mail className="w-6 h-6 text-primary" />,
+                label: "Email",
+                value: "hello@kardomatik.ru",
+                href: "mailto:hello@kardomatik.ru",
+                desc: "Для общих вопросов",
+              },
+              {
+                icon: <MessageCircle className="w-6 h-6 text-sky-500" />,
+                label: "Telegram",
+                value: "@kardomatik",
+                href: "https://t.me/kardomatik",
+                desc: "Быстрые ответы",
+              },
+              {
+                icon: <Phone className="w-6 h-6 text-emerald-500" />,
+                label: "WhatsApp",
+                value: "+7 (999) 000-00-00",
+                href: "https://wa.me/79990000000",
+                desc: "Звонки и сообщения",
+              },
+            ].map((contact) => (
+              <a
+                key={contact.label}
+                href={contact.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-col items-center text-center gap-3 p-6 rounded-2xl border border-border bg-background hover:border-primary/40 hover:shadow-md transition-all group"
+                data-testid={`contact-${contact.label.toLowerCase()}`}
+              >
+                <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center group-hover:scale-105 transition-transform">
+                  {contact.icon}
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium mb-0.5">{contact.label}</p>
+                  <p className="font-semibold text-foreground text-sm">{contact.value}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{contact.desc}</p>
+                </div>
+              </a>
+            ))}
           </div>
         </section>
       </main>
@@ -196,6 +307,7 @@ export default function Landing() {
           </div>
           <div className="flex items-center gap-4">
             <Link href="/pricing" className="hover:text-foreground transition-colors">Тарифы</Link>
+            <a href="#contacts" className="hover:text-foreground transition-colors">Контакты</a>
           </div>
           <span>© 2025 КардоМатик</span>
         </div>

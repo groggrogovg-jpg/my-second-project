@@ -11,15 +11,18 @@ import GenerationCard from "@/components/generation-card";
 import ResultView from "@/components/result-view";
 import {
   Sparkles, History, Zap, Star,
-  CreditCard, Loader2, RefreshCw, Camera, Type, Video,
-  ImagePlus, X, ChevronDown, ChevronUp, Info, Target,
-  CheckSquare, Square, Gift, Check,
+  CreditCard, Loader2, Camera, Type, Video,
+  ImagePlus, X, Info, Target,
+  CheckSquare, Square, Check, User, LogIn,
+  ShoppingCart,
 } from "lucide-react";
 import type { Generation } from "@shared/schema";
-import { MODELS, ASPECT_RATIOS, INITIAL_STARS, starsToGenerations, VIDEO_STAR_COSTS, TRYON_STAR_COST, type ModelId, type AspectRatioId } from "@shared/schema";
+import {
+  MODELS, ASPECT_RATIOS, VIDEO_STAR_COSTS, TRYON_STAR_COST, TRIAL_LIMIT,
+  type ModelId, type AspectRatioId,
+} from "@shared/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-// Категории одежды для примерки
 type GarmentCategory = "head" | "top" | "bottom" | "feet" | "extra";
 const GARMENT_CATEGORIES: { id: GarmentCategory; label: string; examples: string }[] = [
   { id: "head", label: "Голова / аксессуары", examples: "Шапка, кепка, очки, шарф, берет" },
@@ -29,28 +32,29 @@ const GARMENT_CATEGORIES: { id: GarmentCategory; label: string; examples: string
   { id: "extra", label: "Дополнительно", examples: "Сумка, ремень, часы, бижутерия, пальто" },
 ];
 
-const STARS_KEY = "kardo_stars";
-const USED_PROMOS_KEY = "kardo_used_promos";
+const NANO2_BALANCE_KEY = "kardo_nano2_balance";
+const PRO_BALANCE_KEY = "kardo_pro_balance";
+const TRIAL_COUNT_KEY = "kardo_trial_count";
+const USER_KEY = "kardo_user";
 
-function getUsedPromos(): string[] {
-  try { return JSON.parse(localStorage.getItem(USED_PROMOS_KEY) || "[]"); } catch { return []; }
+function getTrialCount(): number {
+  return parseInt(localStorage.getItem(TRIAL_COUNT_KEY) || "0", 10);
 }
-function markPromoUsed(code: string) {
-  const used = getUsedPromos();
-  if (!used.includes(code)) localStorage.setItem(USED_PROMOS_KEY, JSON.stringify([...used, code]));
+function setTrialCount(n: number) {
+  localStorage.setItem(TRIAL_COUNT_KEY, String(Math.max(0, n)));
 }
-
-function getStars(): number {
-  const stored = localStorage.getItem(STARS_KEY);
-  if (stored === null) {
-    localStorage.setItem(STARS_KEY, String(INITIAL_STARS));
-    return INITIAL_STARS;
-  }
-  return parseInt(stored, 10) || 0;
+function getBalance(key: string): number {
+  return parseInt(localStorage.getItem(key) || "0", 10);
 }
-
-function setStarsStorage(n: number) {
-  localStorage.setItem(STARS_KEY, String(Math.max(0, n)));
+function setBalance(key: string, n: number) {
+  localStorage.setItem(key, String(Math.max(0, n)));
+}
+function getUsername(): string | null {
+  return localStorage.getItem(USER_KEY);
+}
+function setUsername(name: string | null) {
+  if (name) localStorage.setItem(USER_KEY, name);
+  else localStorage.removeItem(USER_KEY);
 }
 
 type ContentTab = "photo" | "card";
@@ -69,17 +73,19 @@ export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
+  const [noText, setNoText] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelId>("nano-banana-pro");
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatioId>("1:1");
   const [activeGenerationId, setActiveGenerationId] = useState<string | null>(null);
-  const [stars, setStars] = useState<number>(getStars);
-  const pendingStarCostRef = useRef<number>(0);
-  const [pendingPaymentLabel, setPendingPaymentLabel] = useState<string | null>(null);
-  const [verifyingPayment, setVerifyingPayment] = useState(false);
-  const [promoOpen, setPromoOpen] = useState(false);
-  const [promoCode, setPromoCode] = useState("");
-  const [promoLoading, setPromoLoading] = useState(false);
-  const promoInputRef = useRef<HTMLInputElement>(null);
+
+  const [username, setUsernameState] = useState<string | null>(getUsername);
+  const [nano2Balance, setNano2Balance] = useState<number>(() => getBalance(NANO2_BALANCE_KEY));
+  const [proBalance, setProBalance] = useState<number>(() => getBalance(PRO_BALANCE_KEY));
+  const [trialCount, setTrialCountState] = useState<number>(getTrialCount);
+
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authUsername, setAuthUsername] = useState("");
+  const [isTrialGeneration, setIsTrialGeneration] = useState(false);
 
   const [activeTab, setActiveTab] = useState<ContentTab>("card");
   const [selectedFormat, setSelectedFormat] = useState<FormatId>("1:1");
@@ -101,96 +107,31 @@ export default function Home() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const updateStars = (n: number) => {
-    setStarsStorage(n);
-    setStars(Math.max(0, n));
+  const isAuth = !!username;
+  const currentBalance = selectedModel === "nano-banana-2" ? nano2Balance : proBalance;
+
+  const updateBalance = (model: ModelId, n: number) => {
+    const key = model === "nano-banana-2" ? NANO2_BALANCE_KEY : PRO_BALANCE_KEY;
+    setBalance(key, n);
+    if (model === "nano-banana-2") setNano2Balance(Math.max(0, n));
+    else setProBalance(Math.max(0, n));
   };
 
-  const redeemPromo = async () => {
-    const code = promoCode.trim().toUpperCase();
-    if (!code) return;
-    if (getUsedPromos().includes(code)) {
-      toast({ title: "Промокод уже использован", variant: "destructive" });
-      return;
-    }
-    setPromoLoading(true);
-    try {
-      const res = await fetch("/api/promo/redeem", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        toast({ title: data.error || "Неверный промокод", variant: "destructive" });
-      } else {
-        markPromoUsed(code);
-        updateStars(getStars() + data.stars);
-        toast({ title: data.message, description: `Баланс: ${getStars() + data.stars} ⭐` });
-        setPromoCode("");
-        setPromoOpen(false);
-      }
-    } catch {
-      toast({ title: "Ошибка сети", variant: "destructive" });
-    } finally {
-      setPromoLoading(false);
-    }
+  const handleAuthSubmit = () => {
+    const name = authUsername.trim();
+    if (!name) return;
+    setUsername(name);
+    setUsernameState(name);
+    setAuthModalOpen(false);
+    setAuthUsername("");
+    toast({ title: `Добро пожаловать, ${name}!`, description: "Теперь купите пакет карточек для генерации без водяных знаков." });
   };
 
-  useEffect(() => {
-    const handler = (e: StorageEvent) => {
-      if (e.key === STARS_KEY && e.newValue !== null) {
-        setStars(parseInt(e.newValue, 10) || 0);
-      }
-    };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
-  }, []);
-
-  useEffect(() => {
-    const pending = localStorage.getItem("kardo_pending_payment");
-    if (!pending) return;
-    let parsed: { label: string; stars: number };
-    try { parsed = JSON.parse(pending); } catch { return; }
-    const { label, stars: starsToAdd } = parsed;
-    const creditedKey = `kardo_credited_${label}`;
-    if (localStorage.getItem(creditedKey)) {
-      localStorage.removeItem("kardo_pending_payment");
-      return;
-    }
-    setPendingPaymentLabel(label);
-    let attempts = 0;
-    const maxAttempts = 24;
-
-    const creditStars = (amount: number) => {
-      const newStars = getStars() + amount;
-      updateStars(newStars);
-      localStorage.setItem(creditedKey, "1");
-      localStorage.removeItem("kardo_pending_payment");
-      setPendingPaymentLabel(null);
-      toast({ title: `+${amount} ⭐ зачислено!`, description: "Звёзды добавлены на ваш баланс. Приятной работы!" });
-    };
-
-    const interval = setInterval(async () => {
-      attempts++;
-      try {
-        const res = await fetch(`/api/payment/verify?label=${encodeURIComponent(label)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.paid) { clearInterval(interval); creditStars(data.stars || starsToAdd); return; }
-          if (data.tokenExpired) { clearInterval(interval); return; }
-        } else {
-          const res2 = await fetch(`/api/payment/pending?label=${encodeURIComponent(label)}`);
-          if (res2.ok) {
-            const data2 = await res2.json();
-            if (data2.found && data2.confirmed) { clearInterval(interval); creditStars(data2.stars || starsToAdd); return; }
-          }
-        }
-      } catch {}
-      if (attempts >= maxAttempts) clearInterval(interval);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  const handleLogout = () => {
+    setUsername(null);
+    setUsernameState(null);
+    toast({ title: "Вы вышли из аккаунта" });
+  };
 
   const { data: generations = [] } = useQuery<Generation[]>({
     queryKey: ["/api/generations"],
@@ -216,7 +157,6 @@ export default function Home() {
     },
   });
 
-  // При перегенерации очищаем кэш поллинга, чтобы перезапустить опрос
   const handleRegenerationComplete = useCallback((id: string) => {
     queryClient.invalidateQueries({ queryKey: ["/api/generation", id] });
     queryClient.invalidateQueries({ queryKey: ["/api/generations"] });
@@ -237,15 +177,20 @@ export default function Home() {
 
   useEffect(() => {
     if (!polledGeneration) return;
-    if (polledGeneration.status === "done" && pendingStarCostRef.current > 0) {
-      updateStars(getStars() - pendingStarCostRef.current);
-      pendingStarCostRef.current = 0;
+    if (polledGeneration.status === "done") {
+      if (isAuth) {
+        const model = (polledGeneration.model as ModelId) || selectedModel;
+        updateBalance(model, getBalance(model === "nano-banana-2" ? NANO2_BALANCE_KEY : PRO_BALANCE_KEY) - 1);
+      } else {
+        const newCount = getTrialCount() + 1;
+        setTrialCount(newCount);
+        setTrialCountState(newCount);
+      }
     }
-    if (polledGeneration.status === "error" && pendingStarCostRef.current > 0) {
-      pendingStarCostRef.current = 0;
+    if (polledGeneration.status === "error") {
       toast({
         title: "Ошибка генерации",
-        description: polledGeneration.errorMessage || "Не удалось создать карточку. Звёзды не списаны.",
+        description: polledGeneration.errorMessage || "Не удалось создать карточку.",
         variant: "destructive",
       });
     }
@@ -255,10 +200,15 @@ export default function Home() {
   const videoStars = VIDEO_STAR_COSTS[videoDuration];
 
   const hasAnyGarment = Object.values(tryonGarments).some((g) => g.file !== null);
+
+  const trialRemaining = TRIAL_LIMIT - trialCount;
+
   const canGenerate =
-    activeTab === "card" ? (stars >= currentModel.stars && selectedFiles.length > 0) :
-    activeTab === "photo" ? (stars >= TRYON_STAR_COST && selectedFiles.length > 0 && hasAnyGarment) :
-    false;
+    activeTab === "card"
+      ? (isAuth ? currentBalance > 0 : trialCount < TRIAL_LIMIT) && selectedFiles.length > 0
+      : activeTab === "photo"
+      ? (isAuth ? currentBalance > 0 : trialCount < TRIAL_LIMIT) && selectedFiles.length > 0 && hasAnyGarment
+      : false;
 
   const cardMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -267,6 +217,7 @@ export default function Home() {
       formData.append("model", selectedModel);
       formData.append("aspectRatio", selectedAspectRatio);
       if (notes.trim()) formData.append("notes", notes.trim());
+      if (noText) formData.append("noText", "true");
       const response = await fetch("/api/generate", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -277,7 +228,7 @@ export default function Home() {
       return response.json();
     },
     onSuccess: (data) => {
-      pendingStarCostRef.current = currentModel.stars;
+      setIsTrialGeneration(!isAuth);
       setActiveGenerationId(data.id);
       queryClient.invalidateQueries({ queryKey: ["/api/generations"] });
     },
@@ -302,7 +253,6 @@ export default function Home() {
       return response.json();
     },
     onSuccess: (data) => {
-      pendingStarCostRef.current = VIDEO_STAR_COSTS[videoDuration];
       setActiveGenerationId(data.id);
       queryClient.invalidateQueries({ queryKey: ["/api/generations"] });
     },
@@ -326,7 +276,6 @@ export default function Home() {
       return response.json();
     },
     onSuccess: (data) => {
-      pendingStarCostRef.current = TRYON_STAR_COST;
       setActiveGenerationId(data.id);
       queryClient.invalidateQueries({ queryKey: ["/api/generations"] });
     },
@@ -360,9 +309,7 @@ export default function Home() {
     if (!canGenerate) return;
     if (activeTab === "photo") {
       if (!selectedFiles[0]) return;
-      const garmentFiles = Object.values(tryonGarments)
-        .map((g) => g.file)
-        .filter(Boolean) as File[];
+      const garmentFiles = Object.values(tryonGarments).map((g) => g.file).filter(Boolean) as File[];
       if (garmentFiles.length === 0) return;
       tryonMutation.mutate({ personFile: selectedFiles[0], garmentFiles });
     } else {
@@ -376,17 +323,13 @@ export default function Home() {
     setSelectedFiles([]);
     setPreviewUrls([]);
     setNotes("");
+    setIsTrialGeneration(false);
   };
 
   const [animatingVideo, setAnimatingVideo] = useState(false);
 
   const handleAnimateVideo = async (imageUrl: string) => {
     if (animatingVideo) return;
-    const cost = VIDEO_STAR_COSTS[5];
-    if (stars < cost) {
-      toast({ title: "Недостаточно звёзд", description: `Нужно ${cost} ⭐ для оживления`, variant: "destructive" });
-      return;
-    }
     setAnimatingVideo(true);
     try {
       let blob: Blob;
@@ -401,11 +344,11 @@ export default function Home() {
         const resp = await fetch(`/api/proxy-image?url=${encodeURIComponent(imageUrl)}`);
         blob = await resp.blob();
       }
-      const file = new File([blob], "tryon-result.png", { type: blob.type || "image/png" });
+      const file = new File([blob], "result.png", { type: blob.type || "image/png" });
       const formData = new FormData();
       formData.append("image", file);
       formData.append("duration", "5");
-      formData.append("prompt", "Smooth model showcase, slow graceful movement, professional fashion shoot lighting, cinematic quality");
+      formData.append("prompt", "Smooth product showcase, slow graceful movement, cinematic quality");
       const response = await fetch("/api/generate-video", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -414,10 +357,9 @@ export default function Home() {
         throw new Error(msg);
       }
       const data = await response.json();
-      pendingStarCostRef.current = cost;
       setActiveGenerationId(data.id);
       queryClient.invalidateQueries({ queryKey: ["/api/generations"] });
-      toast({ title: "Видео запущено!", description: "Оживление карточки началось ⭐×5" });
+      toast({ title: "Видео запущено!", description: "Оживление карточки началось" });
     } catch (err: any) {
       toast({ title: "Ошибка", description: err.message, variant: "destructive" });
     } finally {
@@ -430,10 +372,6 @@ export default function Home() {
     setSelectedFiles([]);
     setPreviewUrls([]);
   };
-
-  const isDone = activeGeneration?.status === "done";
-  const isProcessing = activeGeneration && !["done", "error"].includes(activeGeneration.status ?? "");
-  const isError = activeGeneration?.status === "error";
 
   const formatToAspect: Record<FormatId, AspectRatioId> = {
     "8:16": "9:16",
@@ -449,9 +387,45 @@ export default function Home() {
     if (mapped) setSelectedAspectRatio(mapped);
   };
 
+  const isDone = activeGeneration?.status === "done";
+  const isProcessing = activeGeneration && !["done", "error"].includes(activeGeneration.status ?? "");
+  const isError = activeGeneration?.status === "error";
+
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+      {authModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-lg">Войти / Зарегистрироваться</h2>
+              <button onClick={() => setAuthModalOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Введите имя пользователя. После регистрации вы сможете купить пакеты карточек и генерировать без водяных знаков.
+            </p>
+            <input
+              type="text"
+              value={authUsername}
+              onChange={(e) => setAuthUsername(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAuthSubmit(); }}
+              placeholder="Ваше имя или email"
+              className="w-full h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              autoFocus
+              data-testid="input-auth-username"
+            />
+            <Button className="w-full" onClick={handleAuthSubmit} disabled={!authUsername.trim()} data-testid="button-auth-submit">
+              Продолжить
+            </Button>
+            <p className="text-xs text-muted-foreground text-center">
+              Пробный режим: 5 карточек с водяным знаком бесплатно
+            </p>
+          </Card>
+        </div>
+      )}
+
+      <header className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-4">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
@@ -462,7 +436,7 @@ export default function Home() {
               <p className="text-xs text-muted-foreground leading-none">ИИ-генератор карточек товаров</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Link href="/pricing">
               <button
                 className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
@@ -472,98 +446,28 @@ export default function Home() {
                 Тарифы
               </button>
             </Link>
-            {promoOpen ? (
-              <div className="flex items-center gap-1.5">
-                <input
-                  ref={promoInputRef}
-                  value={promoCode}
-                  onChange={(e) => setPromoCode(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") redeemPromo(); if (e.key === "Escape") { setPromoOpen(false); setPromoCode(""); } }}
-                  placeholder="Введите промокод"
-                  className="h-8 w-36 rounded-md border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-                  autoFocus
-                  data-testid="input-promo-code"
-                />
-                <button
-                  onClick={redeemPromo}
-                  disabled={promoLoading || !promoCode.trim()}
-                  className="h-8 px-2.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1"
-                  data-testid="button-promo-submit"
-                >
-                  {promoLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                </button>
-                <button
-                  onClick={() => { setPromoOpen(false); setPromoCode(""); }}
-                  className="h-8 w-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted"
-                  data-testid="button-promo-close"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+            {isAuth ? (
+              <div className="flex items-center gap-2">
+                <CardBalance nano2={nano2Balance} pro={proBalance} username={username!} onLogout={handleLogout} />
               </div>
             ) : (
-              <button
-                onClick={() => { setPromoOpen(true); setTimeout(() => promoInputRef.current?.focus(), 50); }}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
-                data-testid="button-promo-open"
-              >
-                <Gift className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Промокод</span>
-              </button>
+              <>
+                <TrialBadge count={trialCount} limit={TRIAL_LIMIT} />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setAuthModalOpen(true)}
+                  className="flex items-center gap-1.5 text-xs"
+                  data-testid="button-login"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Войти</span>
+                </Button>
+              </>
             )}
-            <StarBalance stars={stars} />
           </div>
         </div>
       </header>
-
-      {pendingPaymentLabel && (
-        <div className="border-b border-amber-500/30 bg-amber-500/5">
-          <div className="max-w-6xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
-              {verifyingPayment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4 fill-amber-500 text-amber-500" />}
-              <span>Платёж в обработке — звёзды будут зачислены автоматически</span>
-            </div>
-            <button
-              className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline"
-              data-testid="button-verify-payment"
-              disabled={verifyingPayment}
-              onClick={async () => {
-                if (!pendingPaymentLabel) return;
-                setVerifyingPayment(true);
-                try {
-                  const res = await fetch(`/api/payment/verify?label=${encodeURIComponent(pendingPaymentLabel)}`);
-                  if (res.ok) {
-                    const data = await res.json();
-                    if (data.paid) {
-                      const pending = localStorage.getItem("kardo_pending_payment");
-                      let starsToAdd = data.stars;
-                      if (!starsToAdd && pending) { try { starsToAdd = JSON.parse(pending).stars; } catch {} }
-                      const creditedKey = `kardo_credited_${pendingPaymentLabel}`;
-                      updateStars(getStars() + starsToAdd);
-                      localStorage.setItem(creditedKey, "1");
-                      localStorage.removeItem("kardo_pending_payment");
-                      setPendingPaymentLabel(null);
-                      toast({ title: `+${starsToAdd} ⭐ зачислено!`, description: "Спасибо за покупку!" });
-                      return;
-                    }
-                    if (data.tokenExpired) {
-                      toast({ title: "Проверка недоступна", description: "Обратитесь к администратору сервиса.", variant: "destructive" });
-                      return;
-                    }
-                  }
-                  toast({ title: "Платёж ещё не подтверждён", description: "Попробуйте через несколько минут." });
-                } catch {
-                  toast({ title: "Ошибка проверки", description: "Попробуйте позже.", variant: "destructive" });
-                } finally {
-                  setVerifyingPayment(false);
-                }
-              }}
-            >
-              <RefreshCw className="w-3 h-3" />
-              Проверить сейчас
-            </button>
-          </div>
-        </div>
-      )}
 
       <main className="max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-start">
@@ -582,6 +486,8 @@ export default function Home() {
               setActiveTab={setActiveTab}
               notes={notes}
               setNotes={setNotes}
+              noText={noText}
+              setNoText={setNoText}
               selectedModel={selectedModel}
               setSelectedModel={setSelectedModel}
               selectedFormat={selectedFormat}
@@ -600,7 +506,10 @@ export default function Home() {
               setVideoDesc={setVideoDesc}
               tryonGarments={tryonGarments}
               setTryonGarments={setTryonGarments}
-              stars={stars}
+              isAuth={isAuth}
+              currentBalance={currentBalance}
+              trialCount={trialCount}
+              trialLimit={TRIAL_LIMIT}
               canGenerate={canGenerate}
               currentModel={currentModel}
               videoStars={videoStars}
@@ -608,6 +517,7 @@ export default function Home() {
               hasFiles={selectedFiles.length > 0}
               selectedFiles={selectedFiles}
               onGenerate={handleGenerate}
+              onAuthOpen={() => setAuthModalOpen(true)}
             />
           </div>
 
@@ -621,8 +531,7 @@ export default function Home() {
               onAnimateVideo={handleAnimateVideo}
               animatingVideo={animatingVideo}
               onRegenerationComplete={handleRegenerationComplete}
-              stars={stars}
-              onStarsChange={updateStars}
+              isTrial={isTrialGeneration || !isAuth}
             />
 
             {generations.length > 0 && (
@@ -649,10 +558,10 @@ export default function Home() {
             <Link href="/pricing">
               <button className="w-full flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:border-primary/50 hover:bg-primary/3 transition-all text-sm group" data-testid="link-pricing-card">
                 <div className="text-left">
-                  <p className="font-medium text-foreground">Тарифы</p>
-                  <p className="text-xs text-muted-foreground">Пакеты и подписки</p>
+                  <p className="font-medium text-foreground">Купить пакет карточек</p>
+                  <p className="text-xs text-muted-foreground">от 199 ₽ за 5 карточек</p>
                 </div>
-                <CreditCard className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                <ShoppingCart className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
               </button>
             </Link>
           </div>
@@ -745,6 +654,7 @@ function PhotoBlock({
 function GenerateBlock({
   activeTab, setActiveTab,
   notes, setNotes,
+  noText, setNoText,
   selectedModel, setSelectedModel,
   selectedFormat, handleFormatSelect,
   creativity, setCreativity,
@@ -754,12 +664,14 @@ function GenerateBlock({
   videoCardMode, setVideoCardMode,
   videoDesc, setVideoDesc,
   tryonGarments, setTryonGarments,
-  stars, canGenerate, currentModel, videoStars, isPending, hasFiles,
+  isAuth, currentBalance, trialCount, trialLimit,
+  canGenerate, currentModel, videoStars, isPending, hasFiles,
   selectedFiles,
-  onGenerate,
+  onGenerate, onAuthOpen,
 }: {
   activeTab: ContentTab; setActiveTab: (t: ContentTab) => void;
   notes: string; setNotes: (v: string) => void;
+  noText: boolean; setNoText: (v: boolean) => void;
   selectedModel: ModelId; setSelectedModel: (m: ModelId) => void;
   selectedFormat: FormatId; handleFormatSelect: (f: FormatId) => void;
   creativity: number; setCreativity: (v: number) => void;
@@ -770,14 +682,18 @@ function GenerateBlock({
   videoDesc: string; setVideoDesc: (v: string) => void;
   tryonGarments: Record<GarmentCategory, { file: File | null; url: string | null }>;
   setTryonGarments: React.Dispatch<React.SetStateAction<Record<GarmentCategory, { file: File | null; url: string | null }>>>;
-  stars: number; canGenerate: boolean;
+  isAuth: boolean; currentBalance: number; trialCount: number; trialLimit: number;
+  canGenerate: boolean;
   currentModel: typeof MODELS[number];
   videoStars: number;
   isPending: boolean; hasFiles: boolean;
   selectedFiles: File[];
   onGenerate: () => void;
+  onAuthOpen: () => void;
 }) {
   const hasAnyGarment = Object.values(tryonGarments).some((g) => g.file !== null);
+  const trialRemaining = trialLimit - trialCount;
+  const trialExhausted = !isAuth && trialCount >= trialLimit;
 
   const tabs: { id: ContentTab; label: string; icon: React.ReactNode }[] = [
     { id: "photo", label: "Фото", icon: <Camera className="w-3.5 h-3.5" /> },
@@ -825,9 +741,12 @@ function GenerateBlock({
         <CardTabContent
           notes={notes}
           setNotes={setNotes}
+          noText={noText}
+          setNoText={setNoText}
           selectedModel={selectedModel}
           setSelectedModel={setSelectedModel}
-          stars={stars}
+          isAuth={isAuth}
+          currentBalance={currentBalance}
           selectedFiles={selectedFiles}
         />
       )}
@@ -840,55 +759,88 @@ function GenerateBlock({
         />
       )}
 
-      <div className="mt-4">
-        {activeTab === "card" && !hasFiles && (
-          <p className="text-xs text-muted-foreground text-center mb-2">Сначала загрузите фото товара</p>
+      <div className="mt-4 space-y-2">
+        {!isAuth && !trialExhausted && (
+          <div className="flex items-center justify-between text-xs px-1">
+            <span className="text-muted-foreground">Пробный режим</span>
+            <span className={`font-medium ${trialRemaining <= 1 ? "text-destructive" : "text-muted-foreground"}`}>
+              {trialRemaining} из {trialLimit} карточек осталось
+            </span>
+          </div>
         )}
-        {activeTab === "photo" && !hasFiles && (
-          <p className="text-xs text-muted-foreground text-center mb-2">Загрузите фото модели в блоке выше</p>
+
+        {trialExhausted && (
+          <div className="rounded-lg bg-muted/50 border border-border p-3 text-center space-y-2">
+            <p className="text-xs font-medium text-foreground">Пробный лимит исчерпан</p>
+            <p className="text-xs text-muted-foreground">Войдите и купите пакет для генерации без ограничений</p>
+            <Button size="sm" className="w-full text-xs" onClick={onAuthOpen} data-testid="button-auth-prompt">
+              <LogIn className="w-3.5 h-3.5 mr-1.5" />
+              Войти / Зарегистрироваться
+            </Button>
+          </div>
         )}
-        {activeTab === "photo" && hasFiles && !hasAnyGarment && (
-          <p className="text-xs text-muted-foreground text-center mb-2">Загрузите фото одежды ниже</p>
+
+        {isAuth && activeTab === "card" && hasFiles && currentBalance === 0 && (
+          <div className="rounded-lg bg-muted/50 border border-border p-3 text-center space-y-2">
+            <p className="text-xs font-medium text-foreground">Недостаточно карточек</p>
+            <p className="text-xs text-muted-foreground">Купите пакет чтобы продолжить генерацию</p>
+            <Link href="/pricing">
+              <Button size="sm" className="w-full text-xs" data-testid="button-buy-pack">
+                <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
+                Купить пакет
+              </Button>
+            </Link>
+          </div>
         )}
-        {activeTab === "card" && hasFiles && stars < currentModel.stars && (
-          <p className="text-xs text-destructive text-center mb-2">
-            Недостаточно звёзд. Нужно {currentModel.stars} ⭐, у вас {stars} ⭐
-          </p>
+
+        {!trialExhausted && !(isAuth && activeTab === "card" && hasFiles && currentBalance === 0) && (
+          <>
+            {activeTab === "card" && !hasFiles && (
+              <p className="text-xs text-muted-foreground text-center">Сначала загрузите фото товара</p>
+            )}
+            {activeTab === "photo" && !hasFiles && (
+              <p className="text-xs text-muted-foreground text-center">Загрузите фото модели в блоке выше</p>
+            )}
+            {activeTab === "photo" && hasFiles && !hasAnyGarment && (
+              <p className="text-xs text-muted-foreground text-center">Загрузите фото одежды ниже</p>
+            )}
+            <Button
+              className="w-full font-semibold"
+              size="lg"
+              onClick={canGenerate && !isPending ? onGenerate : undefined}
+              disabled={isPending || !canGenerate}
+              data-testid="button-generate"
+            >
+              {isPending ? (
+                <><div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mr-2" />Запускаем...</>
+              ) : activeTab === "photo" ? (
+                <><Sparkles className="w-4 h-4 mr-2" />{hasFiles && hasAnyGarment ? "Примерить" : "Загрузите фото и одежду"}</>
+              ) : (
+                <><Sparkles className="w-4 h-4 mr-2" />{hasFiles ? `Создать карточку · ${currentModel.pricePerCard} ₽` : "Загрузите фото"}</>
+              )}
+            </Button>
+            {!isAuth && hasFiles && (
+              <p className="text-xs text-muted-foreground text-center">
+                Карточка будет с водяным знаком.{" "}
+                <button className="text-primary hover:underline" onClick={onAuthOpen}>Войдите</button>
+                {" "}и купите пакет для чистого результата.
+              </p>
+            )}
+          </>
         )}
-        {activeTab === "photo" && hasFiles && hasAnyGarment && stars < TRYON_STAR_COST && (
-          <p className="text-xs text-destructive text-center mb-2">
-            Недостаточно звёзд. Нужно {TRYON_STAR_COST} ⭐, у вас {stars} ⭐
-          </p>
-        )}
-        <Button
-          className="w-full font-semibold"
-          size="lg"
-          onClick={canGenerate && !isPending ? onGenerate : undefined}
-          disabled={isPending || !canGenerate}
-          data-testid="button-generate"
-        >
-          {isPending ? (
-            <><div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mr-2" />Запускаем...</>
-          ) : stars === 0 ? (
-            <Link href="/pricing" className="flex items-center gap-2 w-full justify-center"><Star className="w-4 h-4" />Пополнить звёзды</Link>
-          ) : activeTab === "photo" ? (
-            <><Sparkles className="w-4 h-4 mr-2" />{hasFiles && hasAnyGarment ? `Примерить · ${TRYON_STAR_COST} ⭐` : "Загрузите фото и одежду"}</>
-          ) : (
-            <><Sparkles className="w-4 h-4 mr-2" />{hasFiles ? `Создать карточку · ${currentModel.stars} ⭐` : "Загрузите фото"}</>
-          )}
-        </Button>
       </div>
     </Card>
   );
 }
 
 function CardTabContent({
-  notes, setNotes, selectedModel, setSelectedModel, stars,
+  notes, setNotes, noText, setNoText, selectedModel, setSelectedModel, isAuth, currentBalance,
   selectedFiles,
 }: {
   notes: string; setNotes: (v: string) => void;
+  noText: boolean; setNoText: (v: boolean) => void;
   selectedModel: ModelId; setSelectedModel: (m: ModelId) => void;
-  stars: number;
+  isAuth: boolean; currentBalance: number;
   selectedFiles: File[];
 }) {
   const [suggesting, setSuggesting] = useState(false);
@@ -930,7 +882,7 @@ function CardTabContent({
             AI идея
           </button>
         </div>
-        <p className="text-xs text-muted-foreground mb-1.5">Напишите в свободной форме, какой текст хотите видеть на карточке (преимущества или качества товара)</p>
+        <p className="text-xs text-muted-foreground mb-1.5">Напишите в свободной форме, какой текст хотите видеть на карточке</p>
         <Textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -941,7 +893,25 @@ function CardTabContent({
         />
       </div>
 
-      <ModelPills selected={selectedModel} onChange={setSelectedModel} stars={stars} />
+      <ModelPills selected={selectedModel} onChange={setSelectedModel} isAuth={isAuth} currentBalance={currentBalance} />
+
+      <div>
+        <button
+          className="flex items-center gap-2 w-full text-left"
+          onClick={() => setNoText(!noText)}
+          data-testid="toggle-no-text"
+        >
+          {noText
+            ? <CheckSquare className="w-4 h-4 text-primary flex-shrink-0" />
+            : <Square className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
+          <span className="text-xs text-foreground font-medium">Только фон (без текста)</span>
+        </button>
+        {noText && (
+          <p className="text-xs text-muted-foreground mt-1 pl-6">
+            ИИ создаст только товар + фон, без текстовых надписей. Вы сможете добавить текст вручную.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -985,9 +955,6 @@ function TryonTabContent({
           1. Загрузите фото <span className="font-medium text-foreground">модели</span> в блоке «Ваш товар»<br/>
           2. Загрузите фото <span className="font-medium text-foreground">одежды</span> по категориям ниже<br/>
           3. ИИ виртуально примеряет весь образ на модели
-        </p>
-        <p className="text-xs text-muted-foreground/70 italic">
-          Можно загрузить 1–5 элементов одежды — ИИ соберёт полный образ
         </p>
       </div>
 
@@ -1052,148 +1019,24 @@ function TryonTabContent({
 
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span className="bg-muted rounded px-2 py-0.5 font-medium text-foreground">Nano Banana 2</span>
-        <span>{hasAnyGarment ? `${Object.values(tryonGarments).filter(g => g.file).length} / 5 элементов` : "— ИИ-примерка · 5 ⭐"}</span>
+        <span>{hasAnyGarment ? `${Object.values(tryonGarments).filter(g => g.file).length} / 5 элементов` : "— ИИ-примерка"}</span>
       </div>
     </div>
   );
 }
 
-function VideoTabContent({
-  videoDesc, setVideoDesc, videoDuration, setVideoDuration,
-  videoLooping, setVideoLooping, videoCardMode, setVideoCardMode,
-  videoStars, hasFiles,
-}: {
-  videoDesc: string; setVideoDesc: (v: string) => void;
-  videoDuration: VideoDuration; setVideoDuration: (v: VideoDuration) => void;
-  videoLooping: boolean; setVideoLooping: (v: boolean) => void;
-  videoCardMode: boolean; setVideoCardMode: (v: boolean) => void;
-  videoStars: number; hasFiles: boolean;
+function ModelPills({ selected, onChange, isAuth, currentBalance }: {
+  selected: ModelId;
+  onChange: (m: ModelId) => void;
+  isAuth: boolean;
+  currentBalance: number;
 }) {
-  return (
-    <TooltipProvider>
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="bg-muted rounded px-2 py-0.5 font-medium text-foreground">Video</span>
-          <span>· {videoStars} ⭐</span>
-        </div>
-        <span className={`text-xs ${hasFiles ? "text-green-600 font-medium" : "text-muted-foreground"}`}>
-          {hasFiles ? "✓ Фото загружено" : "Загрузите фото ↑"}
-        </span>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <div className="flex items-center gap-1">
-            <p className="text-xs font-medium text-foreground">Описание видео</p>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="w-3 h-3 text-muted-foreground cursor-help" />
-              </TooltipTrigger>
-              <TooltipContent side="right" className="max-w-48 text-xs">
-                Опишите движение: камера приближается, товар вращается, плавный зум... Чем точнее — тем лучше результат
-              </TooltipContent>
-            </Tooltip>
-          </div>
-          <button className="flex items-center gap-1 text-xs text-primary font-medium opacity-70 hover:opacity-100 transition-opacity">
-            <Sparkles className="w-3 h-3" />
-            AI идея
-          </button>
-        </div>
-        <Textarea
-          value={videoDesc}
-          onChange={(e) => setVideoDesc(e.target.value.slice(0, 1500))}
-          placeholder="Например: плавное приближение к товару, медленное вращение на 360°, кинематографическая съёмка..."
-          rows={4}
-          className="resize-none text-sm"
-          data-testid="input-video-desc"
-        />
-        <p className="text-right text-xs text-muted-foreground mt-1">{videoDesc.length}/1500</p>
-      </div>
-
-      <div className="space-y-4 pt-1 border-t border-border">
-          <div>
-            <div className="flex items-center gap-1 mb-2">
-              <p className="text-xs font-medium text-foreground">Длительность</p>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="w-3 h-3 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent side="right" className="max-w-48 text-xs">
-                  5 сек = {VIDEO_STAR_COSTS[5]} ⭐. 10 сек = {VIDEO_STAR_COSTS[10]} ⭐. Для соцсетей достаточно 5 секунд
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <div className="flex gap-2">
-              {([5, 10] as VideoDuration[]).map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setVideoDuration(d)}
-                  data-testid={`duration-${d}`}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all flex flex-col items-center ${
-                    videoDuration === d
-                      ? "bg-foreground text-background border-foreground"
-                      : "border-border text-muted-foreground hover:border-primary/50"
-                  }`}
-                >
-                  <span>{d} сек</span>
-                  <span className="text-xs opacity-60">{VIDEO_STAR_COSTS[d as VideoDuration]} ⭐</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              className="flex items-center gap-2 flex-1 text-left"
-              onClick={() => setVideoLooping(!videoLooping)}
-              data-testid="toggle-looping"
-            >
-              {videoLooping ? <CheckSquare className="w-4 h-4 text-primary flex-shrink-0" /> : <Square className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
-              <span className="text-xs text-foreground">Цикличное видео</span>
-            </button>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="w-3 h-3 text-muted-foreground cursor-help" />
-              </TooltipTrigger>
-              <TooltipContent side="left" className="max-w-48 text-xs">
-                Видео бесшовно зациклится — для баннеров и витрин маркетплейсов
-              </TooltipContent>
-            </Tooltip>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              className="flex items-center gap-2 flex-1 text-left"
-              onClick={() => setVideoCardMode(!videoCardMode)}
-              data-testid="toggle-card-mode"
-            >
-              {videoCardMode ? <CheckSquare className="w-4 h-4 text-primary flex-shrink-0" /> : <Square className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
-              <span className="text-xs text-foreground">Режим карточки</span>
-            </button>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="w-3 h-3 text-muted-foreground cursor-help" />
-              </TooltipTrigger>
-              <TooltipContent side="left" className="max-w-48 text-xs">
-                ИИ добавит текстовые блоки и элементы дизайна как на карточке товара
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
-      </div>
-    </TooltipProvider>
-  );
-}
-
-function ModelPills({ selected, onChange, stars }: { selected: ModelId; onChange: (m: ModelId) => void; stars: number }) {
   return (
     <div>
       <p className="text-xs font-medium text-foreground mb-1.5">Модель</p>
       <div className="flex gap-1.5">
         {MODELS.map((m) => {
           const isSelected = selected === m.id;
-          const canAfford = stars >= m.stars;
           return (
             <button
               key={m.id}
@@ -1201,10 +1044,15 @@ function ModelPills({ selected, onChange, stars }: { selected: ModelId; onChange
               data-testid={`model-${m.id}`}
               className={`flex-1 flex flex-col items-center py-2 px-1 rounded-lg border text-xs transition-all ${
                 isSelected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border bg-muted/30 hover:border-primary/40"
-              } ${!canAfford ? "opacity-60" : ""}`}
+              }`}
             >
               <span className="font-semibold text-foreground leading-tight text-center mb-0.5">{m.name}</span>
-              <span className="text-amber-500 font-medium">{m.stars} ⭐</span>
+              <span className="text-primary font-medium">{m.pricePerCard} ₽/кард</span>
+              {isAuth && isSelected && (
+                <span className="text-[10px] text-muted-foreground mt-0.5">
+                  {currentBalance > 0 ? `${currentBalance} осталось` : "0 карточек"}
+                </span>
+              )}
             </button>
           );
         })}
@@ -1213,21 +1061,77 @@ function ModelPills({ selected, onChange, stars }: { selected: ModelId; onChange
   );
 }
 
-function SmallUploadZone({ label, disabled }: { label: string; disabled?: boolean }) {
+function TrialBadge({ count, limit }: { count: number; limit: number }) {
+  const remaining = limit - count;
+  const isEmpty = remaining === 0;
+  const isLow = remaining === 1;
+  const colorClass = isEmpty
+    ? "bg-destructive/10 border-destructive/30 text-destructive"
+    : isLow
+    ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-600"
+    : "bg-muted border-border text-muted-foreground";
+
   return (
     <div
-      className={`rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center py-3 px-2 gap-1 ${
-        disabled ? "opacity-50 cursor-not-allowed" : "hover:border-primary/40 cursor-pointer"
-      }`}
+      data-testid="trial-badge"
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium border ${colorClass}`}
     >
-      <ImagePlus className="w-4 h-4 text-muted-foreground/60" />
-      <span className="text-xs text-muted-foreground text-center">{label}</span>
+      <Sparkles className="w-3 h-3" />
+      <span>{isEmpty ? "Лимит исчерпан" : `${remaining}/${limit} пробных`}</span>
+    </div>
+  );
+}
+
+function CardBalance({ nano2, pro, username, onLogout }: { nano2: number; pro: number; username: string; onLogout: () => void }) {
+  return (
+    <div className="relative group">
+      <div
+        data-testid="card-balance"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold border bg-primary/10 border-primary/20 text-primary cursor-default"
+      >
+        <User className="w-3.5 h-3.5" />
+        <span className="hidden sm:inline max-w-[80px] truncate">{username}</span>
+        <span>·</span>
+        <span>{nano2 + pro} карт.</span>
+      </div>
+      <div className="absolute right-0 top-full mt-2 z-50 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity duration-150">
+        <div className="bg-popover border border-border rounded-xl shadow-lg px-4 py-3 w-56 space-y-2.5">
+          <p className="text-xs font-semibold text-foreground">Баланс карточек</p>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground flex items-center gap-1">
+                <Zap className="w-3 h-3" /> Nano Banana 2
+              </span>
+              <span className="font-bold text-foreground">{nano2} кард.</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground flex items-center gap-1">
+                <Star className="w-3 h-3 text-primary" /> Nano Banana Pro
+              </span>
+              <span className="font-bold text-primary">{pro} кард.</span>
+            </div>
+          </div>
+          <Link href="/pricing">
+            <Button size="sm" variant="outline" className="w-full text-xs mt-1 pointer-events-auto">
+              <ShoppingCart className="w-3 h-3 mr-1.5" />
+              Купить пакет
+            </Button>
+          </Link>
+          <button
+            onClick={onLogout}
+            className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors text-center pt-0.5"
+            data-testid="button-logout"
+          >
+            Выйти из аккаунта
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
 function ResultsPanel({
-  isDone, isProcessing, isError, activeGeneration, onNewGeneration, onAnimateVideo, animatingVideo, onRegenerationComplete, stars, onStarsChange,
+  isDone, isProcessing, isError, activeGeneration, onNewGeneration, onAnimateVideo, animatingVideo, onRegenerationComplete, isTrial,
 }: {
   isDone: boolean; isProcessing: boolean; isError: boolean;
   activeGeneration: Generation | null;
@@ -1235,8 +1139,7 @@ function ResultsPanel({
   onAnimateVideo?: (imageUrl: string) => void;
   animatingVideo?: boolean;
   onRegenerationComplete?: (id: string) => void;
-  stars: number;
-  onStarsChange?: (n: number) => void;
+  isTrial: boolean;
 }) {
   if (isDone && activeGeneration) {
     return (
@@ -1246,8 +1149,7 @@ function ResultsPanel({
         onAnimateVideo={onAnimateVideo}
         animatingVideo={animatingVideo}
         onRegenerationComplete={onRegenerationComplete}
-        stars={stars}
-        onStarsChange={onStarsChange}
+        isTrial={isTrial}
       />
     );
   }
@@ -1271,55 +1173,6 @@ function ResultsPanel({
         </div>
       </div>
     </Card>
-  );
-}
-
-function StarBalance({ stars }: { stars: number }) {
-  const isEmpty = stars === 0;
-  const isLow = stars > 0 && stars <= 3;
-  const gens = starsToGenerations(stars);
-  const colorClass = isEmpty
-    ? "bg-destructive/10 border-destructive/30 text-destructive"
-    : isLow
-    ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-600 dark:text-yellow-400"
-    : "bg-primary/10 border-primary/20 text-primary";
-
-  return (
-    <div className="relative group">
-      <div
-        data-testid="star-balance"
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold border cursor-default ${colorClass}`}
-      >
-        <Star className={`w-3.5 h-3.5 ${isEmpty || isLow ? "" : "fill-current"}`} />
-        <span>{stars} ⭐</span>
-      </div>
-      <div className="absolute right-0 top-full mt-2 z-50 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 max-w-[calc(100vw-1rem)]">
-        <div className="bg-popover border border-border rounded-xl shadow-lg px-4 py-3 w-52 space-y-2.5">
-          <p className="text-xs font-semibold text-foreground">Баланс звёзд</p>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Осталось звёзд</span>
-              <span className="font-bold text-amber-500">{stars} ⭐</span>
-            </div>
-            <div className="h-px bg-border" />
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-primary" /> Pro (7⭐/кард)
-              </span>
-              <span className="font-semibold text-primary">{gens.pro} кард</span>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground flex items-center gap-1">
-                <Zap className="w-3 h-3" /> Nano2 (3⭐/кард)
-              </span>
-              <span className="font-semibold text-foreground">{gens.nano2} кард</span>
-            </div>
-          </div>
-          {isLow && <p className="text-xs text-yellow-600 dark:text-yellow-400 font-medium pt-0.5">⚠️ Звёзды заканчиваются — пополните на странице тарифов</p>}
-          {isEmpty && <p className="text-xs text-destructive font-medium pt-0.5">Нет звёзд — перейдите к тарифам</p>}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1350,7 +1203,11 @@ function ProcessingView({ generation }: { generation: Generation }) {
 
   const title = isVideo ? "Создаём видео..." : isTryon ? "Примеряем одежду..." : "Создаём карточку товара...";
   const timeEst = isVideo ? "Обычно занимает 2–5 минут" : isTryon ? "Обычно занимает 1–2 минуты" : "Обычно занимает 1–3 минуты";
-  const icon = isVideo ? <Video className="w-6 h-6 text-primary animate-pulse" /> : isTryon ? <Camera className="w-6 h-6 text-primary animate-pulse" /> : <Sparkles className="w-6 h-6 text-primary animate-pulse" />;
+  const icon = isVideo
+    ? <Video className="w-6 h-6 text-primary animate-pulse" />
+    : isTryon
+    ? <Camera className="w-6 h-6 text-primary animate-pulse" />
+    : <Sparkles className="w-6 h-6 text-primary animate-pulse" />;
 
   return (
     <Card className="p-4 sm:p-6 space-y-4 sm:space-y-6">
@@ -1365,12 +1222,6 @@ function ProcessingView({ generation }: { generation: Generation }) {
           <div className="inline-flex items-center gap-1.5 mt-2 text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
             <Zap className="w-3 h-3" />
             {modelInfo.name} · {generation.aspectRatio}
-          </div>
-        )}
-        {isTryon && (
-          <div className="inline-flex items-center gap-1.5 mt-2 text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
-            <Zap className="w-3 h-3" />
-            Nano Banana 2
           </div>
         )}
       </div>
