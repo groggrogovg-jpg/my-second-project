@@ -109,6 +109,8 @@ export default function Home() {
 
   const isAuth = !!username;
   const currentBalance = selectedModel === "nano-banana-2" ? nano2Balance : proBalance;
+  const nano2Balance = selectedModel === "nano-banana-2" ? nano2Balance : proBalance;
+  const tryonBalance = nano2Balance;
 
   const updateBalance = (model: ModelId, n: number) => {
     const key = model === "nano-banana-2" ? NANO2_BALANCE_KEY : PRO_BALANCE_KEY;
