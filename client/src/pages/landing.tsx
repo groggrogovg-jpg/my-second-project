@@ -179,12 +179,12 @@ export default function Landing() {
                 <p className="text-xs text-center text-muted-foreground font-medium">До</p>
               </div>
               <div className="space-y-2 relative">
-                <div className="rounded-xl border-2 border-primary/40 bg-primary/5 aspect-square flex flex-col items-center justify-center gap-3 p-6 relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-violet-500/5" />
-                  <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center relative z-10">
-                    <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-primary/60" />
-                  </div>
-                  <span className="text-xs sm:text-sm text-foreground text-center font-medium relative z-10">Стильная карточка с инфографикой</span>
+                <div className="rounded-xl border-2 border-primary/40 aspect-square overflow-hidden relative">
+                  <img
+                    src="/after-boots.jpg"
+                    alt="Ботинки — профессиональная карточка WB"
+                    className="w-full h-full object-cover"
+                  />
                   <div className="absolute bottom-2 right-2 z-10">
                     <span className="text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded-md font-medium">КардоМатик</span>
                   </div>
