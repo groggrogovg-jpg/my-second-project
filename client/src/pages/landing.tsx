@@ -20,6 +20,9 @@ export default function Landing() {
             <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               Тарифы
             </Link>
+            <a href="https://t.me/KardoMatik_bot" target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
+              Поддержка
+            </a>
             <Link href="/app">
               <button className="text-sm bg-primary text-primary-foreground px-4 py-1.5 rounded-lg font-medium hover:bg-primary/90 transition-colors">
                 Попробовать
@@ -263,8 +266,8 @@ export default function Landing() {
               {
                 icon: <MessageCircle className="w-6 h-6 text-sky-500" />,
                 label: "Telegram",
-                value: "@kardomatik",
-                href: "https://t.me/kardomatik",
+                value: "@KardoMatik_bot",
+                href: "https://t.me/KardoMatik_bot",
                 desc: "Быстрые ответы",
               },
               {

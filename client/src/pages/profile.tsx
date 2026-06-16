@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Loader2,
   LayoutDashboard,
+  MessageCircle,
 } from "lucide-react";
 
 const USER_KEY = "kardo_user";
@@ -139,6 +140,16 @@ export default function Profile() {
           <div>
             <h1 className="text-lg font-semibold text-foreground">{username}</h1>
             <p className="text-xs text-muted-foreground">Личный кабинет КардоМатик</p>
+            <a
+              href="https://t.me/KardoMatik_bot"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-muted-foreground hover:text-primary transition-colors inline-flex items-center gap-1 mt-0.5"
+              data-testid="link-support"
+            >
+              <MessageCircle className="w-3 h-3" />
+              Поддержка
+            </a>
           </div>
           <div className="ml-auto">
             <Button variant="outline" size="sm" onClick={handleLogout} className="gap-1.5">

@@ -14,7 +14,7 @@ import {
   CreditCard, Loader2, Camera, Type, Video,
   ImagePlus, X, Info, Target,
   CheckSquare, Square, Check, User, LogIn,
-  ShoppingCart,
+  ShoppingCart, MessageCircle,
 } from "lucide-react";
 import type { Generation } from "@shared/schema";
 import {
@@ -485,6 +485,16 @@ export default function Home() {
                 Тарифы
               </button>
             </Link>
+            <a
+              href="https://t.me/KardoMatik_bot"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
+              data-testid="link-support"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              Поддержка
+            </a>
             {isAuth && (
               <Link href="/profile">
                 <button
