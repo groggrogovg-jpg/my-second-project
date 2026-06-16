@@ -169,11 +169,12 @@ export default function Landing() {
             {/* Пример 2 — плейсхолдер */}
             <div className="grid grid-cols-2 gap-4 sm:gap-8 items-center">
               <div className="space-y-2">
-                <div className="rounded-xl border border-border bg-muted/40 aspect-square flex flex-col items-center justify-center gap-3 p-6">
-                  <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-xl bg-muted border border-border flex items-center justify-center">
-                    <Upload className="w-6 h-6 sm:w-8 sm:h-8 text-muted-foreground/40" />
-                  </div>
-                  <span className="text-xs sm:text-sm text-muted-foreground text-center">Фото на белом фоне</span>
+                <div className="rounded-xl border border-border bg-muted/40 aspect-square overflow-hidden">
+                  <img
+                    src="/before-boots.jpg"
+                    alt="Ботинки — обычное фото"
+                    className="w-full h-full object-cover"
+                  />
                 </div>
                 <p className="text-xs text-center text-muted-foreground font-medium">До</p>
               </div>
