@@ -4,6 +4,8 @@ import { randomUUID } from "crypto";
 export interface PaymentRecord {
   label: string;
   starsToAdd: number;
+  cardsIncluded: number;
+  modelType: "nano2" | "pro" | "";
   operationId: string;
   amount: string;
   confirmed: boolean;
@@ -90,7 +92,13 @@ export class MemStorage implements IStorage {
   }
 
   async recordPayment(payment: Omit<PaymentRecord, "confirmed" | "createdAt">): Promise<PaymentRecord> {
-    const record: PaymentRecord = { ...payment, confirmed: false, createdAt: new Date() };
+    const record: PaymentRecord = {
+      cardsIncluded: 0,
+      modelType: "",
+      ...payment,
+      confirmed: false,
+      createdAt: new Date(),
+    };
     this.payments.set(payment.label, record);
     return record;
   }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { CheckCircle, Sparkles, ArrowRight, Loader2, AlertCircle, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 const NANO2_KEY = "kardo_nano2_balance";
 const PRO_KEY = "kardo_pro_balance";
 const STARS_KEY = "kardo_stars";
+
+const POLL_INTERVAL_MS = 3000;
+const POLL_MAX_ATTEMPTS = 20; // ~1 minute
 
 function getBalance(key: string): number {
   const stored = localStorage.getItem(key);
@@ -21,12 +24,15 @@ export default function PaymentSuccess() {
   const [verifying, setVerifying] = useState(false);
   const [verifyFailed, setVerifyFailed] = useState(false);
   const [currentBalance, setCurrentBalance] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const label = params.get("label") || "";
     const cardsFromUrl = Number(params.get("cards") || "0");
-    const modelFromUrl = (params.get("model") || "") as "nano2" | "pro" | "";
+    const rawModel = params.get("model") || "";
+    const modelFromUrl: "nano2" | "pro" | "" =
+      rawModel === "nano2" || rawModel === "pro" ? rawModel : "";
     const starsFromUrl = Number(params.get("stars") || "0");
 
     if (!label) return;
@@ -37,8 +43,7 @@ export default function PaymentSuccess() {
       if (cardsFromUrl > 0 && modelFromUrl) {
         setCardsAdded(cardsFromUrl);
         setModel(modelFromUrl);
-        const balKey = modelFromUrl === "pro" ? PRO_KEY : NANO2_KEY;
-        setCurrentBalance(getBalance(balKey));
+        setCurrentBalance(getBalance(modelFromUrl === "pro" ? PRO_KEY : NANO2_KEY));
       } else {
         setStarsAdded(starsFromUrl);
       }
@@ -67,31 +72,55 @@ export default function PaymentSuccess() {
       localStorage.setItem(creditedKey, "1");
       localStorage.removeItem("kardo_pending_payment");
       setStarsAdded(amount);
-      fetch("/api/payment/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label }),
-      }).catch(() => {});
     };
 
+    // Если параметры есть в URL (основной flow) — зачисляем сразу
     if (cardsFromUrl > 0 && modelFromUrl) {
       creditCards(cardsFromUrl, modelFromUrl);
-    } else if (starsFromUrl > 0) {
-      creditStars(starsFromUrl);
-    } else {
-      setVerifying(true);
-      fetch(`/api/payment/verify?label=${encodeURIComponent(label)}`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.paid && data.stars > 0) {
-            creditStars(data.stars);
-          } else {
-            setVerifyFailed(true);
-          }
-        })
-        .catch(() => setVerifyFailed(true))
-        .finally(() => setVerifying(false));
+      return;
     }
+    if (starsFromUrl > 0) {
+      creditStars(starsFromUrl);
+      return;
+    }
+
+    // Иначе — ждём подтверждения через webhook, поллим verify
+    setVerifying(true);
+    let attempts = 0;
+
+    const poll = async () => {
+      attempts++;
+      try {
+        const r = await fetch(`/api/payment/verify?label=${encodeURIComponent(label)}`);
+        const data = await r.json();
+
+        if (data.paid) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setVerifying(false);
+          if (data.cards > 0 && (data.model === "nano2" || data.model === "pro")) {
+            creditCards(data.cards, data.model);
+          } else if (data.stars > 0) {
+            creditStars(data.stars);
+          }
+          return;
+        }
+      } catch {
+        // продолжаем поллинг
+      }
+
+      if (attempts >= POLL_MAX_ATTEMPTS) {
+        if (pollRef.current) clearInterval(pollRef.current);
+        setVerifying(false);
+        setVerifyFailed(true);
+      }
+    };
+
+    poll();
+    pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
   const modelLabel = model === "pro" ? "Nano Banana Pro" : "Nano Banana 2";
@@ -122,12 +151,12 @@ export default function PaymentSuccess() {
               : "Оплата прошла успешно!"}
           </h1>
           {verifying ? (
-            <p className="text-muted-foreground">Запрашиваем подтверждение от ЮMoney...</p>
+            <p className="text-muted-foreground">Ожидаем подтверждения от ЮMoney...</p>
           ) : alreadyCredited ? (
             <p className="text-muted-foreground">Карточки уже были зачислены ранее.</p>
           ) : verifyFailed ? (
             <p className="text-muted-foreground">
-              Платёж получен, карточки будут зачислены автоматически. Вернитесь на главную — они появятся в течение минуты.
+              Платёж получен, карточки будут зачислены автоматически. Вернитесь через минуту — они появятся на балансе.
             </p>
           ) : (
             <p className="text-muted-foreground">Спасибо за покупку. Карточки добавлены на ваш баланс.</p>
