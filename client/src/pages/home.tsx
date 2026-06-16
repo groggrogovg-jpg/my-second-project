@@ -207,7 +207,7 @@ export default function Home() {
     activeTab === "card"
       ? (isAuth ? currentBalance > 0 : trialCount < TRIAL_LIMIT) && selectedFiles.length > 0
       : activeTab === "photo"
-      ? (isAuth ? currentBalance > 0 : trialCount < TRIAL_LIMIT) && selectedFiles.length > 0 && hasAnyGarment
+      ? selectedFiles.length > 0 && hasAnyGarment
       : false;
 
   const cardMutation = useMutation({
