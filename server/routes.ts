@@ -10,6 +10,15 @@ import crypto from "crypto";
 import { URL } from "url";
 
 const YM_NOTIFY_SECRET = process.env.YOOMONEY_NOTIFICATION_SECRET || "";
+const DEV_PROMO_CODE = process.env.DEV_PROMO_CODE || "DEV100";
+
+function adminOnly(req: Request, res: Response, next: Function) {
+  const devCode = (req.headers["x-dev-code"] as string) || "";
+  if (!devCode || devCode.trim() !== DEV_PROMO_CODE) {
+    return res.status(403).json({ error: "Доступ запрещён" });
+  }
+  next();
+}
 
 const TEST_MODE = false;
 function getTestPrice(realPrice: number): number {
@@ -443,6 +452,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const aspectRatio = (req.body?.aspectRatio as string) || "1:1";
       const notes = (req.body?.notes as string) || "";
       const noText = req.body?.noText === "true";
+      const username = (req.body?.username as string) || "";
+      if (username) storage.trackUser(username).catch(() => {});
       const resolution = model === "nano-banana-2" ? "1K" : "2K";
 
       console.log(`[generate] ▶ START file=${filename} size=${imageBuffer.length}b model=${model} ratio=${aspectRatio} noText=${noText} notes="${notes.substring(0, 50)}${notes.length > 50 ? "..." : ""}"`);
@@ -477,16 +488,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
           const resultUrl = await generateCardWithPolza(imageBuffer, filename, mimeType, analysis.prompt, aspectRatio, model, noText);
           await storage.updateGeneration(generation.id, { status: "done", resultImageUrl: resultUrl });
+          if (username) storage.incrementUserGenerations(username).catch(() => {});
           console.log(`[generate] ✓ Polza.ai done id=${generation.id} url=${resultUrl.substring(0, 80)}...`);
 
         } catch (err: any) {
           const axiosDetail = err?.response?.data ? ` [${JSON.stringify(err.response.data)}]` : "";
           const message = err.message || "Неизвестная ошибка";
           console.error(`[generate] ✗ BACKGROUND ERROR id=${generation.id}: ${message}${axiosDetail}`);
-          await storage.updateGeneration(generation.id, {
-            status: "error",
-            errorMessage: message + axiosDetail,
-          });
+          await storage.updateGeneration(generation.id, { status: "error", errorMessage: message + axiosDetail });
+          storage.addErrorLog({ username, model, errorMessage: message + axiosDetail, generationType: "card" }).catch(() => {});
         }
       })();
 
@@ -527,6 +537,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const axiosDetail = err?.response?.data ? ` [${JSON.stringify(err.response.data)}]` : "";
           console.error(`[generate-video] ✗ ERROR id=${generation.id}: ${err.message}${axiosDetail}`);
           await storage.updateGeneration(generation.id, { status: "error", errorMessage: err.message + axiosDetail });
+          storage.addErrorLog({ username: (req.body?.username as string) || "", model: "nano-banana-2", errorMessage: err.message + axiosDetail, generationType: "video" }).catch(() => {});
         }
       })();
 
@@ -574,6 +585,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const axiosDetail = err?.response?.data ? ` [${JSON.stringify(err.response.data)}]` : "";
           console.error(`[generate-tryon] ✗ ERROR id=${generation.id}: ${err.message}${axiosDetail}`);
           await storage.updateGeneration(generation.id, { status: "error", errorMessage: err.message + axiosDetail });
+          storage.addErrorLog({ username: (req.body?.username as string) || "", model: "nano-banana-2", errorMessage: err.message + axiosDetail, generationType: "tryon" }).catch(() => {});
         }
       })();
 
@@ -647,6 +659,68 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     console.log(`[promo] ✓ code=${normalized} stars=${stars}`);
     return res.json({ stars, message: `+${stars} ⭐ зачислено!` });
+  });
+
+  // Промокод разработчика — пополняет карточки и выдаёт флаг is_developer
+  app.post("/api/promo/dev-cards", async (req: Request, res: Response) => {
+    const { code } = req.body as { code?: string };
+    if (!code) return res.status(400).json({ error: "Код не указан" });
+    if (code.trim() !== DEV_PROMO_CODE) {
+      return res.status(403).json({ error: "Неверный код разработчика" });
+    }
+    console.log(`[promo/dev] ✓ developer code activated`);
+    return res.json({ nano2: 100, pro: 100, isDeveloper: true, message: "Баланс пополнен: +100 Nano2, +100 Pro" });
+  });
+
+  // Трекинг пользователя при входе
+  app.post("/api/user/track", async (req: Request, res: Response) => {
+    const { username } = req.body as { username?: string };
+    if (!username) return res.status(400).json({ error: "username обязателен" });
+    const user = await storage.trackUser(username.trim());
+    return res.json({ ok: true, user });
+  });
+
+  // Получить отложенные зачисления для пользователя
+  app.get("/api/user/pending-credits", async (req: Request, res: Response) => {
+    const username = (req.query.username as string) || "";
+    if (!username) return res.status(400).json({ error: "username обязателен" });
+    const credits = await storage.consumePendingCredits(username);
+    return res.json(credits);
+  });
+
+  // ===== ADMIN API (только для разработчика) =====
+
+  app.get("/api/admin/users", adminOnly, async (_req: Request, res: Response) => {
+    const users = await storage.getAllServerUsers();
+    return res.json(users);
+  });
+
+  app.post("/api/admin/users/:username/balance", adminOnly, async (req: Request, res: Response) => {
+    const { username } = req.params;
+    const { nano2Delta, proDelta } = req.body as { nano2Delta?: number; proDelta?: number };
+    if (nano2Delta === undefined && proDelta === undefined) {
+      return res.status(400).json({ error: "nano2Delta или proDelta обязательны" });
+    }
+    await storage.addPendingCredits(username, nano2Delta || 0, proDelta || 0);
+    console.log(`[admin] ✓ pending credits added for ${username}: nano2=${nano2Delta || 0} pro=${proDelta || 0}`);
+    return res.json({ ok: true });
+  });
+
+  app.post("/api/admin/users/:username/reset-balance", adminOnly, async (req: Request, res: Response) => {
+    const { username } = req.params;
+    await storage.addPendingCredits(username, -99999, -99999);
+    console.log(`[admin] balance reset pending for ${username}`);
+    return res.json({ ok: true });
+  });
+
+  app.get("/api/admin/payments", adminOnly, async (_req: Request, res: Response) => {
+    const payments = await storage.listPayments();
+    return res.json(payments);
+  });
+
+  app.get("/api/admin/logs", adminOnly, async (_req: Request, res: Response) => {
+    const logs = await storage.getErrorLogs();
+    return res.json(logs);
   });
 
   app.post("/api/payment/create", async (req: Request, res: Response) => {

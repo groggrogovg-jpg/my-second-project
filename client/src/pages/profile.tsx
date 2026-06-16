@@ -16,11 +16,16 @@ import {
   Image,
   Wand2,
   Shirt,
+  ShieldCheck,
+  Loader2,
+  LayoutDashboard,
 } from "lucide-react";
 
 const USER_KEY = "kardo_user";
 const NANO2_BALANCE_KEY = "kardo_nano2_balance";
 const PRO_BALANCE_KEY = "kardo_pro_balance";
+const IS_DEV_KEY = "kardo_is_developer";
+const DEV_CODE_KEY = "kardo_dev_code";
 
 function getBalance(key: string): number {
   return parseInt(localStorage.getItem(key) || "0", 10);
@@ -35,12 +40,17 @@ export default function Profile() {
   const [pro, setPro] = useState(getBalance(PRO_BALANCE_KEY));
   const [totalCards, setTotalCards] = useState(0);
   const [totalTryons, setTotalTryons] = useState(0);
+  const [isDev, setIsDev] = useState(() => localStorage.getItem(IS_DEV_KEY) === "1");
+  const [devCodeInput, setDevCodeInput] = useState("");
+  const [devLoading, setDevLoading] = useState(false);
+  const [devMessage, setDevMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const onStorage = () => {
       setUsername(getUsername());
       setNano2(getBalance(NANO2_BALANCE_KEY));
       setPro(getBalance(PRO_BALANCE_KEY));
+      setIsDev(localStorage.getItem(IS_DEV_KEY) === "1");
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -64,6 +74,36 @@ export default function Profile() {
   const handleLogout = () => {
     localStorage.removeItem(USER_KEY);
     setUsername(null);
+  };
+
+  const handleDevCode = async () => {
+    if (!devCodeInput.trim()) return;
+    setDevLoading(true);
+    setDevMessage(null);
+    try {
+      const res = await fetch("/api/promo/dev-cards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: devCodeInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Неверный код");
+      const curNano2 = getBalance(NANO2_BALANCE_KEY);
+      const curPro = getBalance(PRO_BALANCE_KEY);
+      localStorage.setItem(NANO2_BALANCE_KEY, String(curNano2 + data.nano2));
+      localStorage.setItem(PRO_BALANCE_KEY, String(curPro + data.pro));
+      localStorage.setItem(IS_DEV_KEY, "1");
+      localStorage.setItem(DEV_CODE_KEY, devCodeInput.trim());
+      setNano2(curNano2 + data.nano2);
+      setPro(curPro + data.pro);
+      setIsDev(true);
+      setDevCodeInput("");
+      setDevMessage(data.message);
+    } catch (e: any) {
+      setDevMessage("❌ " + e.message);
+    } finally {
+      setDevLoading(false);
+    }
   };
 
   if (!username) {
@@ -197,7 +237,7 @@ export default function Profile() {
         </Card>
 
         {/* Info */}
-        <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
+        <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2 mb-6">
           <p className="text-xs font-semibold text-foreground">Как работают балансы</p>
           <p className="text-xs text-muted-foreground leading-relaxed">
             При каждой генерации карточки списывается 1 единица из соответствующего баланса.
@@ -205,6 +245,49 @@ export default function Profile() {
             Пополните баланс на странице Тарифов.
           </p>
         </div>
+
+        {/* Developer section */}
+        {isDev ? (
+          <Card className="p-4 border border-primary/30 bg-primary/5 space-y-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-primary" />
+              <span className="text-sm font-semibold text-foreground">Режим разработчика</span>
+              <Badge variant="secondary" className="ml-auto text-xs">Активен</Badge>
+            </div>
+            <Separator />
+            <Link href="/admin">
+              <Button variant="outline" size="sm" className="gap-1.5 w-full" data-testid="button-go-admin">
+                <LayoutDashboard className="w-3.5 h-3.5" />
+                Открыть панель администратора
+              </Button>
+            </Link>
+          </Card>
+        ) : (
+          <Card className="p-4 border border-border space-y-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-semibold text-foreground">Код разработчика</span>
+            </div>
+            <p className="text-xs text-muted-foreground">Введите код для активации режима разработчика и пополнения баланса.</p>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                placeholder="Введите код..."
+                value={devCodeInput}
+                onChange={(e) => setDevCodeInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleDevCode()}
+                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                data-testid="input-dev-code"
+              />
+              <Button size="sm" onClick={handleDevCode} disabled={devLoading || !devCodeInput.trim()} data-testid="button-activate-dev">
+                {devLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Активировать"}
+              </Button>
+            </div>
+            {devMessage && (
+              <p className={`text-xs font-medium ${devMessage.startsWith("❌") ? "text-destructive" : "text-green-600"}`}>{devMessage}</p>
+            )}
+          </Card>
+        )}
       </main>
     </div>
   );

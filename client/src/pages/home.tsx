@@ -135,6 +135,24 @@ export default function Home() {
     setAuthModalOpen(false);
     setAuthUsername("");
     toast({ title: `Добро пожаловать, ${name}!`, description: "Теперь купите пакет карточек для генерации без водяных знаков." });
+    // Трекинг + проверка ожидающих зачислений от администратора
+    fetch("/api/user/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: name }),
+    }).catch(() => {});
+    fetch(`/api/user/pending-credits?username=${encodeURIComponent(name)}`)
+      .then((r) => r.json())
+      .then((credits: { nano2: number; pro: number }) => {
+        if (credits.nano2 > 0 || credits.pro > 0) {
+          const curNano2 = parseInt(localStorage.getItem("kardo_nano2_balance") || "0", 10);
+          const curPro = parseInt(localStorage.getItem("kardo_pro_balance") || "0", 10);
+          if (credits.nano2 > 0) localStorage.setItem("kardo_nano2_balance", String(curNano2 + credits.nano2));
+          if (credits.pro > 0) localStorage.setItem("kardo_pro_balance", String(curPro + credits.pro));
+          toast({ title: "Зачислены карточки!", description: `+${credits.nano2} Nano2, +${credits.pro} Pro от администратора.` });
+        }
+      })
+      .catch(() => {});
   };
 
   const handleLogout = () => {
@@ -233,6 +251,8 @@ export default function Home() {
       formData.append("aspectRatio", selectedAspectRatio);
       if (notes.trim()) formData.append("notes", notes.trim());
       if (noText) formData.append("noText", "true");
+      const _username = localStorage.getItem("kardo_user") || "";
+      if (_username) formData.append("username", _username);
       const response = await fetch("/api/generate", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -258,6 +278,8 @@ export default function Home() {
       formData.append("image", file);
       formData.append("duration", String(duration));
       if (prompt.trim()) formData.append("prompt", prompt.trim());
+      const _uv = localStorage.getItem("kardo_user") || "";
+      if (_uv) formData.append("username", _uv);
       const response = await fetch("/api/generate-video", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -281,6 +303,8 @@ export default function Home() {
       const formData = new FormData();
       formData.append("person", personFile);
       garmentFiles.forEach((f) => formData.append("garment", f));
+      const _ut = localStorage.getItem("kardo_user") || "";
+      if (_ut) formData.append("username", _ut);
       const response = await fetch("/api/generate-tryon", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
