@@ -109,7 +109,6 @@ export default function Home() {
 
   const isAuth = !!username;
   const currentBalance = selectedModel === "nano-banana-2" ? nano2Balance : proBalance;
-  const nano2Balance = selectedModel === "nano-banana-2" ? nano2Balance : proBalance;
   const tryonBalance = nano2Balance;
 
   const updateBalance = (model: ModelId, n: number) => {
@@ -181,8 +180,13 @@ export default function Home() {
     if (!polledGeneration) return;
     if (polledGeneration.status === "done") {
       if (isAuth) {
-        const model = (polledGeneration.model as ModelId) || selectedModel;
-        updateBalance(model, getBalance(model === "nano-banana-2" ? NANO2_BALANCE_KEY : PRO_BALANCE_KEY) - 1);
+        const genType = (polledGeneration as any).generationType || "card";
+        if (genType === "tryon") {
+          updateBalance("nano-banana-2", getBalance(NANO2_BALANCE_KEY) - 1);
+        } else {
+          const model = (polledGeneration.model as ModelId) || selectedModel;
+          updateBalance(model, getBalance(model === "nano-banana-2" ? NANO2_BALANCE_KEY : PRO_BALANCE_KEY) - 1);
+        }
       } else {
         const newCount = getTrialCount() + 1;
         setTrialCount(newCount);
@@ -209,7 +213,7 @@ export default function Home() {
     activeTab === "card"
       ? (isAuth ? currentBalance > 0 : trialCount < TRIAL_LIMIT) && selectedFiles.length > 0
       : activeTab === "photo"
-      ? selectedFiles.length > 0 && hasAnyGarment
+      ? (isAuth ? nano2Balance > 0 : true) && selectedFiles.length > 0 && hasAnyGarment
       : false;
 
   const cardMutation = useMutation({
@@ -448,6 +452,17 @@ export default function Home() {
                 Тарифы
               </button>
             </Link>
+            {isAuth && (
+              <Link href="/profile">
+                <button
+                  className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
+                  data-testid="link-profile"
+                >
+                  <User className="w-3.5 h-3.5" />
+                  Профиль
+                </button>
+              </Link>
+            )}
             {isAuth ? (
               <div className="flex items-center gap-2">
                 <CardBalance nano2={nano2Balance} pro={proBalance} username={username!} onLogout={handleLogout} />
@@ -510,6 +525,7 @@ export default function Home() {
               setTryonGarments={setTryonGarments}
               isAuth={isAuth}
               currentBalance={currentBalance}
+              tryonBalance={tryonBalance}
               trialCount={trialCount}
               trialLimit={TRIAL_LIMIT}
               canGenerate={canGenerate}
@@ -666,7 +682,7 @@ function GenerateBlock({
   videoCardMode, setVideoCardMode,
   videoDesc, setVideoDesc,
   tryonGarments, setTryonGarments,
-  isAuth, currentBalance, trialCount, trialLimit,
+  isAuth, currentBalance, tryonBalance, trialCount, trialLimit,
   canGenerate, currentModel, videoStars, isPending, hasFiles,
   selectedFiles,
   onGenerate, onAuthOpen,
@@ -684,7 +700,7 @@ function GenerateBlock({
   videoDesc: string; setVideoDesc: (v: string) => void;
   tryonGarments: Record<GarmentCategory, { file: File | null; url: string | null }>;
   setTryonGarments: React.Dispatch<React.SetStateAction<Record<GarmentCategory, { file: File | null; url: string | null }>>>;
-  isAuth: boolean; currentBalance: number; trialCount: number; trialLimit: number;
+  isAuth: boolean; currentBalance: number; tryonBalance: number; trialCount: number; trialLimit: number;
   canGenerate: boolean;
   currentModel: typeof MODELS[number];
   videoStars: number;
@@ -795,7 +811,22 @@ function GenerateBlock({
           </div>
         )}
 
-        {!trialExhausted && !(isAuth && activeTab === "card" && hasFiles && currentBalance === 0) && (
+        {isAuth && activeTab === "photo" && hasFiles && tryonBalance === 0 && (
+          <div className="rounded-lg bg-muted/50 border border-border p-3 text-center space-y-2">
+            <p className="text-xs font-medium text-foreground">Недостаточно примерок</p>
+            <p className="text-xs text-muted-foreground">Купите пакет Nano Banana 2 чтобы продолжить примерку</p>
+            <Link href="/pricing">
+              <Button size="sm" className="w-full text-xs" data-testid="button-buy-pack">
+                <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
+                Купить пакет
+              </Button>
+            </Link>
+          </div>
+        )}
+
+        {/* Show button for non-trial-exhausted OR if photo tab (tryon is always free) */}
+        {(!trialExhausted && !(isAuth && activeTab === "card" && hasFiles && currentBalance === 0)) &&
+         !(isAuth && activeTab === "photo" && hasFiles && tryonBalance === 0) && (
           <>
             {activeTab === "card" && !hasFiles && (
               <p className="text-xs text-muted-foreground text-center">Сначала загрузите фото товара</p>
@@ -816,12 +847,17 @@ function GenerateBlock({
               {isPending ? (
                 <><div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mr-2" />Запускаем...</>
               ) : activeTab === "photo" ? (
-                <><Sparkles className="w-4 h-4 mr-2" />{hasFiles && hasAnyGarment ? "Примерить" : "Загрузите фото и одежду"}</>
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  {hasFiles && hasAnyGarment
+                    ? (isAuth ? `Примерить · 1 карточка` : "Примерить (бесплатно)")
+                    : "Загрузите фото и одежду"}
+                </>
               ) : (
                 <><Sparkles className="w-4 h-4 mr-2" />{hasFiles ? `Создать карточку · ${currentModel.pricePerCard} ₽` : "Загрузите фото"}</>
               )}
             </Button>
-            {!isAuth && hasFiles && (
+            {!isAuth && hasFiles && activeTab === "card" && (
               <p className="text-xs text-muted-foreground text-center">
                 Карточка будет с водяным знаком.{" "}
                 <button className="text-primary hover:underline" onClick={onAuthOpen}>Войдите</button>
@@ -1113,8 +1149,14 @@ function CardBalance({ nano2, pro, username, onLogout }: { nano2: number; pro: n
               <span className="font-bold text-primary">{pro} кард.</span>
             </div>
           </div>
+          <Link href="/profile">
+            <Button size="sm" variant="secondary" className="w-full text-xs pointer-events-auto">
+              <User className="w-3 h-3 mr-1.5" />
+              Личный кабинет
+            </Button>
+          </Link>
           <Link href="/pricing">
-            <Button size="sm" variant="outline" className="w-full text-xs mt-1 pointer-events-auto">
+            <Button size="sm" variant="outline" className="w-full text-xs pointer-events-auto">
               <ShoppingCart className="w-3 h-3 mr-1.5" />
               Купить пакет
             </Button>
