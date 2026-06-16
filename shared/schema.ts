@@ -111,7 +111,7 @@ export const ASPECT_RATIOS = [
 
 export type AspectRatioId = (typeof ASPECT_RATIOS)[number]["id"];
 
-export const TRIAL_LIMIT = 5;
+export const TRIAL_LIMIT = 3;
 
 export const INITIAL_STARS = 10;
 export const VIDEO_STAR_COSTS: Record<5 | 10, number> = { 5: 5, 10: 10 };
