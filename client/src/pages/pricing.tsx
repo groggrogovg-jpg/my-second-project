@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Sparkles, Check, ArrowLeft, Zap, Crown, Package } from "lucide-react";
+import { Sparkles, Check, ArrowLeft, Zap, Crown, Package, Loader2 } from "lucide-react";
 import { NANO2_PACKAGES, PRO_PACKAGES } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 
@@ -129,12 +129,29 @@ function PackagesGrid({
   packages: readonly { id: string; cards: number; price: number; perCard: number; saving: number; popular: boolean }[];
 }) {
   const { toast } = useToast();
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
-  const handlePay = () => {
-    toast({
-      title: "Оплата временно недоступна",
-      description: "Мы работаем над интеграцией оплаты. Следите за обновлениями!",
-    });
+  const handlePay = async (packageId: string) => {
+    setLoadingId(packageId);
+    try {
+      const res = await fetch("/api/payment/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packageId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || "Ошибка при создании платежа");
+      }
+      window.location.href = data.url;
+    } catch (err: any) {
+      toast({
+        title: "Ошибка оплаты",
+        description: err.message || "Не удалось создать платёж. Попробуйте позже.",
+        variant: "destructive",
+      });
+      setLoadingId(null);
+    }
   };
 
   const modelName = model === "nano2" ? "Nano Banana 2" : "Nano Banana Pro";
@@ -196,10 +213,15 @@ function PackagesGrid({
             <Button
               className="w-full"
               variant={pkg.popular ? "default" : "outline"}
-              onClick={handlePay}
+              onClick={() => handlePay(pkg.id)}
+              disabled={loadingId !== null}
               data-testid={`pay-${pkg.id}`}
             >
-              Оплатить
+              {loadingId === pkg.id ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                "Оплатить"
+              )}
             </Button>
           </div>
         </Card>

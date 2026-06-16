@@ -53,6 +53,17 @@ const PLAN_DATA: Record<string, { price: number; starsIncluded: number; name: st
   unlimited: { price: 9000, starsIncluded: 2100, name: "Безлимит" },
 };
 
+const PACKAGE_DATA: Record<string, { price: number; cardsIncluded: number; modelType: "nano2" | "pro"; name: string }> = {
+  "nano2-5":   { price: 199,  cardsIncluded: 5,   modelType: "nano2", name: "Nano Banana 2 — 5 карточек" },
+  "nano2-10":  { price: 379,  cardsIncluded: 10,  modelType: "nano2", name: "Nano Banana 2 — 10 карточек" },
+  "nano2-50":  { price: 1790, cardsIncluded: 50,  modelType: "nano2", name: "Nano Banana 2 — 50 карточек" },
+  "nano2-100": { price: 3490, cardsIncluded: 100, modelType: "nano2", name: "Nano Banana 2 — 100 карточек" },
+  "pro-5":     { price: 299,  cardsIncluded: 5,   modelType: "pro",   name: "Nano Banana Pro — 5 карточек" },
+  "pro-10":    { price: 579,  cardsIncluded: 10,  modelType: "pro",   name: "Nano Banana Pro — 10 карточек" },
+  "pro-50":    { price: 2790, cardsIncluded: 50,  modelType: "pro",   name: "Nano Banana Pro — 50 карточек" },
+  "pro-100":   { price: 5490, cardsIncluded: 100, modelType: "pro",   name: "Nano Banana Pro — 100 карточек" },
+};
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
@@ -639,18 +650,59 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/payment/create", async (req: Request, res: Response) => {
     try {
-      const { planId, planType } = req.body as { planId: string; planType: string };
-      console.log(`[payment/create] ▶ START planId=${planId} planType=${planType}`);
+      const { planId, planType, packageId } = req.body as { planId?: string; planType?: string; packageId?: string };
 
-      const plan = PLAN_DATA[planId];
+      // New package-based flow
+      if (packageId) {
+        console.log(`[payment/create] ▶ START packageId=${packageId}`);
+        const pkg = PACKAGE_DATA[packageId];
+        if (!pkg) {
+          console.log(`[payment/create] ✗ package NOT FOUND packageId=${packageId}`);
+          return res.status(400).json({ error: "Пакет не найден" });
+        }
+        console.log(`[payment/create] ✓ package found: ${pkg.name} price=${pkg.price} cards=${pkg.cardsIncluded} model=${pkg.modelType}`);
+
+        const amount = getTestPrice(pkg.price);
+        const label = `pkg-${packageId}-${Date.now()}`;
+        const comment = `КардоМатик: ${pkg.name}`;
+        console.log(`[payment/create] ✓ amount=${amount}₽ label=${label}`);
+
+        const wallet = process.env.VITE_YOOMONEY_WALLET || "";
+        if (!wallet) console.warn(`[payment/create] ⚠ VITE_YOOMONEY_WALLET not set`);
+
+        const host = req.get("host") || "localhost:5000";
+        const proto = req.headers["x-forwarded-proto"] || req.protocol;
+        const successURL = `${proto}://${host}/payment-success?label=${encodeURIComponent(label)}&cards=${pkg.cardsIncluded}&model=${pkg.modelType}`;
+        console.log(`[payment/create] ✓ successURL=${successURL}`);
+
+        const params = new URLSearchParams({
+          receiver: wallet,
+          "quickpay-form": "button",
+          sum: String(amount),
+          label,
+          comment,
+          successURL,
+        });
+        const url = `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`;
+
+        await storage.recordPayment({ label, starsToAdd: 0, operationId: "", amount: String(amount) });
+        console.log(`[payment/create] ✓ DONE returning url for package`);
+        return res.json({ url, label, cards: pkg.cardsIncluded, model: pkg.modelType });
+      }
+
+      // Legacy stars-based flow (kept for backward compat)
+      const id = planId || "";
+      console.log(`[payment/create] ▶ START planId=${id} planType=${planType}`);
+
+      const plan = PLAN_DATA[id];
       if (!plan) {
-        console.log(`[payment/create] ✗ plan NOT FOUND planId=${planId}`);
+        console.log(`[payment/create] ✗ plan NOT FOUND planId=${id}`);
         return res.status(400).json({ error: "Тариф не найден" });
       }
       console.log(`[payment/create] ✓ plan found: ${plan.name} price=${plan.price} stars=${plan.starsIncluded}`);
 
       const amount = getTestPrice(plan.price);
-      const label = `${planType}-${planId}-${Date.now()}`;
+      const label = `${planType}-${id}-${Date.now()}`;
       const comment = `КардоМатик: "${plan.name}"`;
       console.log(`[payment/create] ✓ amount=${amount}₽ (${TEST_MODE ? "TEST" : "REAL"}) label=${label}`);
 

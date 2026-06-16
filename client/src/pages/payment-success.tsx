@@ -1,25 +1,32 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { CheckCircle, Star, Sparkles, ArrowRight, Loader2, AlertCircle } from "lucide-react";
+import { CheckCircle, Sparkles, ArrowRight, Loader2, AlertCircle, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+const NANO2_KEY = "kardo_nano2_balance";
+const PRO_KEY = "kardo_pro_balance";
 const STARS_KEY = "kardo_stars";
 
-function getStars(): number {
-  const stored = localStorage.getItem(STARS_KEY);
+function getBalance(key: string): number {
+  const stored = localStorage.getItem(key);
   if (stored && !isNaN(Number(stored))) return Number(stored);
   return 0;
 }
 
 export default function PaymentSuccess() {
+  const [cardsAdded, setCardsAdded] = useState(0);
   const [starsAdded, setStarsAdded] = useState(0);
+  const [model, setModel] = useState<"nano2" | "pro" | null>(null);
   const [alreadyCredited, setAlreadyCredited] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyFailed, setVerifyFailed] = useState(false);
+  const [currentBalance, setCurrentBalance] = useState(0);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const label = params.get("label") || "";
+    const cardsFromUrl = Number(params.get("cards") || "0");
+    const modelFromUrl = (params.get("model") || "") as "nano2" | "pro" | "";
     const starsFromUrl = Number(params.get("stars") || "0");
 
     if (!label) return;
@@ -27,12 +34,35 @@ export default function PaymentSuccess() {
     const creditedKey = `kardo_credited_${label}`;
     if (localStorage.getItem(creditedKey)) {
       setAlreadyCredited(true);
-      setStarsAdded(starsFromUrl);
+      if (cardsFromUrl > 0 && modelFromUrl) {
+        setCardsAdded(cardsFromUrl);
+        setModel(modelFromUrl);
+        const balKey = modelFromUrl === "pro" ? PRO_KEY : NANO2_KEY;
+        setCurrentBalance(getBalance(balKey));
+      } else {
+        setStarsAdded(starsFromUrl);
+      }
       return;
     }
 
+    const creditCards = (cards: number, mdl: "nano2" | "pro") => {
+      const balKey = mdl === "pro" ? PRO_KEY : NANO2_KEY;
+      const current = getBalance(balKey);
+      localStorage.setItem(balKey, String(current + cards));
+      localStorage.setItem(creditedKey, "1");
+      localStorage.removeItem("kardo_pending_payment");
+      setCardsAdded(cards);
+      setModel(mdl);
+      setCurrentBalance(current + cards);
+      fetch("/api/payment/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      }).catch(() => {});
+    };
+
     const creditStars = (amount: number) => {
-      const current = getStars();
+      const current = getBalance(STARS_KEY);
       localStorage.setItem(STARS_KEY, String(current + amount));
       localStorage.setItem(creditedKey, "1");
       localStorage.removeItem("kardo_pending_payment");
@@ -44,7 +74,9 @@ export default function PaymentSuccess() {
       }).catch(() => {});
     };
 
-    if (starsFromUrl > 0) {
+    if (cardsFromUrl > 0 && modelFromUrl) {
+      creditCards(cardsFromUrl, modelFromUrl);
+    } else if (starsFromUrl > 0) {
       creditStars(starsFromUrl);
     } else {
       setVerifying(true);
@@ -61,6 +93,10 @@ export default function PaymentSuccess() {
         .finally(() => setVerifying(false));
     }
   }, []);
+
+  const modelLabel = model === "pro" ? "Nano Banana Pro" : "Nano Banana 2";
+  const modelColor = model === "pro" ? "text-primary" : "text-amber-600";
+  const modelBg = model === "pro" ? "bg-primary/10 border-primary/20" : "bg-amber-500/10 border-amber-500/20";
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-3 sm:px-4">
@@ -79,33 +115,54 @@ export default function PaymentSuccess() {
 
         <div className="space-y-2">
           <h1 className="text-2xl font-bold text-foreground">
-            {verifying ? "Проверяем платёж..." : verifyFailed ? "Платёж на проверке" : "Оплата прошла успешно!"}
+            {verifying
+              ? "Проверяем платёж..."
+              : verifyFailed
+              ? "Платёж на проверке"
+              : "Оплата прошла успешно!"}
           </h1>
           {verifying ? (
             <p className="text-muted-foreground">Запрашиваем подтверждение от ЮMoney...</p>
           ) : alreadyCredited ? (
-            <p className="text-muted-foreground">Звёзды уже были зачислены ранее.</p>
+            <p className="text-muted-foreground">Карточки уже были зачислены ранее.</p>
           ) : verifyFailed ? (
             <p className="text-muted-foreground">
-              Платёж получен, звёзды будут зачислены автоматически. Вернитесь на главную — они появятся в течение минуты.
+              Платёж получен, карточки будут зачислены автоматически. Вернитесь на главную — они появятся в течение минуты.
             </p>
           ) : (
-            <p className="text-muted-foreground">
-              Спасибо за покупку. Звёзды добавлены на ваш баланс.
-            </p>
+            <p className="text-muted-foreground">Спасибо за покупку. Карточки добавлены на ваш баланс.</p>
           )}
         </div>
+
+        {cardsAdded > 0 && model && (
+          <div
+            className={`border rounded-2xl p-4 sm:p-6 space-y-2 ${modelBg}`}
+            data-testid="payment-success-cards"
+          >
+            <div className="flex items-center justify-center gap-2">
+              <CreditCard className={`w-6 h-6 ${modelColor}`} />
+              <span className={`text-3xl font-bold ${modelColor}`}>+{cardsAdded}</span>
+              <span className={`text-lg font-medium ${modelColor}`}>карточек</span>
+            </div>
+            <p className="text-xs font-medium text-muted-foreground">{modelLabel}</p>
+            <p className="text-sm text-muted-foreground">
+              Баланс:{" "}
+              <span className="font-semibold text-foreground" data-testid="payment-success-balance">
+                {currentBalance} карточек
+              </span>
+            </p>
+          </div>
+        )}
 
         {starsAdded > 0 && (
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 sm:p-6 space-y-2">
             <div className="flex items-center justify-center gap-2">
-              <Star className="w-6 h-6 text-amber-500 fill-amber-500" />
               <span className="text-3xl font-bold text-amber-600">+{starsAdded}</span>
-              <span className="text-lg text-amber-600 font-medium">звёзд</span>
+              <span className="text-lg text-amber-600 font-medium">⭐ звёзд</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              Теперь на вашем счету{" "}
-              <span className="font-semibold text-foreground">{getStars()} ⭐</span>
+              Баланс:{" "}
+              <span className="font-semibold text-foreground">{getBalance(STARS_KEY)} ⭐</span>
             </p>
           </div>
         )}
