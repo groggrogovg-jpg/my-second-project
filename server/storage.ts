@@ -5,7 +5,7 @@ export interface PaymentRecord {
   label: string;
   starsToAdd: number;
   cardsIncluded: number;
-  modelType: "nano2" | "pro" | "";
+  modelType: string;
   operationId: string;
   amount: string;
   confirmed: boolean;
@@ -21,6 +21,7 @@ export interface IStorage {
   updateGeneration(id: string, updates: Partial<Generation>): Promise<Generation | undefined>;
   listGenerations(): Promise<Generation[]>;
   recordPayment(payment: Omit<PaymentRecord, "confirmed" | "createdAt">): Promise<PaymentRecord>;
+  updatePaymentOperationId(label: string, operationId: string): Promise<PaymentRecord | undefined>;
   getPaymentByLabel(label: string): Promise<PaymentRecord | undefined>;
   confirmPayment(label: string): Promise<PaymentRecord | undefined>;
 }
@@ -100,6 +101,14 @@ export class MemStorage implements IStorage {
       createdAt: new Date(),
     };
     this.payments.set(payment.label, record);
+    return record;
+  }
+
+  async updatePaymentOperationId(label: string, operationId: string): Promise<PaymentRecord | undefined> {
+    const record = this.payments.get(label);
+    if (!record) return undefined;
+    record.operationId = operationId;
+    this.payments.set(label, record);
     return record;
   }
 

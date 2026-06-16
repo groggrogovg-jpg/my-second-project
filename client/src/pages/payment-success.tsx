@@ -7,8 +7,8 @@ const NANO2_KEY = "kardo_nano2_balance";
 const PRO_KEY = "kardo_pro_balance";
 const STARS_KEY = "kardo_stars";
 
-const POLL_INTERVAL_MS = 3000;
-const POLL_MAX_ATTEMPTS = 20; // ~1 minute
+const POLL_INTERVAL_MS = 2500;
+const POLL_MAX_ATTEMPTS = 20;
 
 function getBalance(key: string): number {
   const stored = localStorage.getItem(key);
@@ -24,28 +24,30 @@ export default function PaymentSuccess() {
   const [verifying, setVerifying] = useState(false);
   const [verifyFailed, setVerifyFailed] = useState(false);
   const [currentBalance, setCurrentBalance] = useState(0);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const attemptsRef = useRef(0);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const label = params.get("label") || "";
-    const cardsFromUrl = Number(params.get("cards") || "0");
-    const rawModel = params.get("model") || "";
-    const modelFromUrl: "nano2" | "pro" | "" =
-      rawModel === "nano2" || rawModel === "pro" ? rawModel : "";
-    const starsFromUrl = Number(params.get("stars") || "0");
 
-    if (!label) return;
+    if (!label) {
+      setVerifyFailed(true);
+      return;
+    }
 
     const creditedKey = `kardo_credited_${label}`;
     if (localStorage.getItem(creditedKey)) {
       setAlreadyCredited(true);
-      if (cardsFromUrl > 0 && modelFromUrl) {
-        setCardsAdded(cardsFromUrl);
-        setModel(modelFromUrl);
-        setCurrentBalance(getBalance(modelFromUrl === "pro" ? PRO_KEY : NANO2_KEY));
-      } else {
-        setStarsAdded(starsFromUrl);
+      const storedCards = Number(localStorage.getItem(`kardo_credited_cards_${label}`) || "0");
+      const storedModel = localStorage.getItem(`kardo_credited_model_${label}`) || "";
+      const storedStars = Number(localStorage.getItem(`kardo_credited_stars_${label}`) || "0");
+      if (storedCards > 0 && storedModel) {
+        setCardsAdded(storedCards);
+        setModel(storedModel as "nano2" | "pro");
+        setCurrentBalance(getBalance(storedModel === "pro" ? PRO_KEY : NANO2_KEY));
+      } else if (storedStars > 0) {
+        setStarsAdded(storedStars);
       }
       return;
     }
@@ -55,71 +57,66 @@ export default function PaymentSuccess() {
       const current = getBalance(balKey);
       localStorage.setItem(balKey, String(current + cards));
       localStorage.setItem(creditedKey, "1");
+      localStorage.setItem(`kardo_credited_cards_${label}`, String(cards));
+      localStorage.setItem(`kardo_credited_model_${label}`, mdl);
       localStorage.removeItem("kardo_pending_payment");
       setCardsAdded(cards);
       setModel(mdl);
       setCurrentBalance(current + cards);
-      fetch("/api/payment/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label }),
-      }).catch(() => {});
     };
 
     const creditStars = (amount: number) => {
       const current = getBalance(STARS_KEY);
       localStorage.setItem(STARS_KEY, String(current + amount));
       localStorage.setItem(creditedKey, "1");
+      localStorage.setItem(`kardo_credited_stars_${label}`, String(amount));
       localStorage.removeItem("kardo_pending_payment");
       setStarsAdded(amount);
     };
 
-    // Если параметры есть в URL (основной flow) — зачисляем сразу
-    if (cardsFromUrl > 0 && modelFromUrl) {
-      creditCards(cardsFromUrl, modelFromUrl);
-      return;
-    }
-    if (starsFromUrl > 0) {
-      creditStars(starsFromUrl);
-      return;
-    }
-
-    // Иначе — ждём подтверждения через webhook, поллим verify
-    setVerifying(true);
-    let attempts = 0;
-
     const poll = async () => {
-      attempts++;
       try {
         const r = await fetch(`/api/payment/verify?label=${encodeURIComponent(label)}`);
         const data = await r.json();
 
         if (data.paid) {
-          if (pollRef.current) clearInterval(pollRef.current);
           setVerifying(false);
-          if (data.cards > 0 && (data.model === "nano2" || data.model === "pro")) {
-            creditCards(data.cards, data.model);
+          if (pollRef.current) clearTimeout(pollRef.current);
+
+          if (data.cards > 0 && data.model) {
+            creditCards(data.cards, data.model as "nano2" | "pro");
           } else if (data.stars > 0) {
             creditStars(data.stars);
+          } else {
+            setVerifyFailed(true);
           }
           return;
         }
-      } catch {
-        // продолжаем поллинг
-      }
 
-      if (attempts >= POLL_MAX_ATTEMPTS) {
-        if (pollRef.current) clearInterval(pollRef.current);
-        setVerifying(false);
-        setVerifyFailed(true);
+        attemptsRef.current += 1;
+        if (attemptsRef.current >= POLL_MAX_ATTEMPTS) {
+          setVerifying(false);
+          setVerifyFailed(true);
+          return;
+        }
+
+        pollRef.current = setTimeout(poll, POLL_INTERVAL_MS);
+      } catch {
+        attemptsRef.current += 1;
+        if (attemptsRef.current >= POLL_MAX_ATTEMPTS) {
+          setVerifying(false);
+          setVerifyFailed(true);
+          return;
+        }
+        pollRef.current = setTimeout(poll, POLL_INTERVAL_MS);
       }
     };
 
+    setVerifying(true);
     poll();
-    pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
 
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      if (pollRef.current) clearTimeout(pollRef.current);
     };
   }, []);
 
@@ -197,7 +194,7 @@ export default function PaymentSuccess() {
         )}
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Button className="gap-2" onClick={() => { window.location.href = "/"; }}>
+          <Button className="gap-2" data-testid="button-go-generate" onClick={() => { window.location.href = "/"; }}>
             <Sparkles className="w-4 h-4" />
             Перейти к генерации
             <ArrowRight className="w-4 h-4" />

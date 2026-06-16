@@ -1,3 +1,4 @@
+import express from "express";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
@@ -724,7 +725,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       const url = `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`;
 
-      await storage.recordPayment({ label, starsToAdd: plan.starsIncluded, operationId: "", amount: String(amount) });
+      await storage.recordPayment({ label, starsToAdd: plan.starsIncluded, cardsIncluded: 0, modelType: "", operationId: "", amount: String(amount) });
       console.log(`[payment/create] ✓ payment recorded in storage`);
 
       console.log(`[payment/create] ✓ DONE returning url`);
@@ -748,8 +749,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ЮMoney webhook — верификация SHA-1 подписи и подтверждение платежа
-  app.post("/api/payment/webhook", async (req: Request, res: Response) => {
+  app.post("/api/payment/webhook", express.urlencoded({ extended: false }), async (req: Request, res: Response) => {
     try {
+      console.log(`[payment/webhook] ▶ received notification`, req.body);
+
       const {
         notification_type,
         operation_id,
@@ -762,23 +765,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         sha1_hash,
       } = req.body as Record<string, string>;
 
-      console.log(`[payment/webhook] ▶ label=${label} op=${operation_id} amount=${amount}`);
-
-      if (YM_NOTIFY_SECRET) {
-        const str = [
+      // Verify SHA-1 signature
+      const secret = YM_NOTIFY_SECRET;
+      if (secret) {
+        const checkString = [
           notification_type,
           operation_id,
           amount,
           currency,
           datetime,
-          sender,
-          codepro,
-          YM_NOTIFY_SECRET,
-          label,
+          sender || "",
+          codepro || "",
+          secret,
+          label || "",
         ].join("&");
-        const expected = crypto.createHash("sha1").update(str).digest("hex");
-        if (expected !== sha1_hash) {
-          console.warn(`[payment/webhook] ✗ SHA-1 mismatch expected=${expected} got=${sha1_hash}`);
+        const expectedHash = crypto.createHash("sha1").update(checkString).digest("hex");
+        if (expectedHash !== sha1_hash) {
+          console.warn(`[payment/webhook] ✗ SHA-1 mismatch expected=${expectedHash} got=${sha1_hash}`);
           return res.status(400).send("bad signature");
         }
         console.log(`[payment/webhook] ✓ SHA-1 verified`);
@@ -787,50 +790,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       if (!label) {
-        console.warn(`[payment/webhook] ⚠ no label in notification`);
+        console.warn(`[payment/webhook] ⚠ no label in notification, ignoring`);
         return res.status(200).send("ok");
       }
 
-      const payment = await storage.getPaymentByLabel(label);
-      if (!payment) {
-        console.warn(`[payment/webhook] ⚠ payment not found for label=${label}`);
-        return res.status(200).send("ok");
+      // Save operation_id and confirm payment
+      await storage.updatePaymentOperationId(label, operation_id || "");
+      const confirmed = await storage.confirmPayment(label);
+      if (confirmed) {
+        console.log(`[payment/webhook] ✓ payment confirmed label=${label} operationId=${operation_id} amount=${amount}`);
+      } else {
+        console.warn(`[payment/webhook] ⚠ payment label not found in storage: ${label}`);
       }
 
-      await storage.confirmPayment(label);
-      console.log(`[payment/webhook] ✓ payment confirmed label=${label} cards=${payment.cardsIncluded} model=${payment.modelType}`);
-      return res.status(200).send("ok");
+      res.status(200).send("ok");
     } catch (err: any) {
       console.error(`[payment/webhook] ✗ ERROR: ${err.message}`);
-      return res.status(200).send("ok");
+      res.status(500).send("error");
     }
   });
 
-  // Проверка статуса платежа клиентом после редиректа с ЮMoney
+  // Проверка статуса платежа по label — клиент использует этот эндпоинт вместо URL-параметров
   app.get("/api/payment/verify", async (req: Request, res: Response) => {
-    const label = (req.query.label as string) || "";
+    const label = req.query.label as string;
     if (!label) return res.status(400).json({ error: "label required" });
-    console.log(`[payment/verify] ▶ label=${label}`);
 
     const payment = await storage.getPaymentByLabel(label);
     if (!payment) {
-      console.log(`[payment/verify] ✗ payment not found`);
-      return res.json({ paid: false });
+      console.log(`[payment/verify] ✗ label not found: ${label}`);
+      return res.json({ paid: false, found: false });
     }
 
-    if (payment.confirmed) {
-      console.log(`[payment/verify] ✓ confirmed cards=${payment.cardsIncluded} model=${payment.modelType} stars=${payment.starsToAdd}`);
-      return res.json({
-        paid: true,
-        cards: payment.cardsIncluded,
-        model: payment.modelType,
-        stars: payment.starsToAdd,
-      });
+    if (!payment.confirmed) {
+      console.log(`[payment/verify] ⏳ label=${label} not yet confirmed`);
+      return res.json({ paid: false, found: true });
     }
 
-    // Не подтверждён через webhook — пока не зачисляем
-    console.log(`[payment/verify] ⏳ pending (not yet confirmed by webhook)`);
-    return res.json({ paid: false, pending: true });
+    console.log(`[payment/verify] ✓ label=${label} confirmed cards=${payment.cardsIncluded} model=${payment.modelType} stars=${payment.starsToAdd}`);
+    return res.json({
+      paid: true,
+      found: true,
+      cards: payment.cardsIncluded,
+      model: payment.modelType,
+      stars: payment.starsToAdd,
+    });
   });
 
   // Перегенерация карточки с изменённым текстом
