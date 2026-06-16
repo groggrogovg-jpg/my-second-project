@@ -1,0 +1,68 @@
+В проекте Neiro Card AI добавь систему поддержки с веб-интерфейсом для операторов.
+
+### 1. Telegram бот (бэкенд)
+
+- Создай Telegram бота через @BotFather, получи токен.
+- Добавь в Replit Secrets: `TELEGRAM_BOT_TOKEN`.
+- Настрой Webhook: `POST /api/telegram/webhook` — сюда Telegram будет присылать все сообщения.
+- При входящем сообщении:
+  - Сохраняй его в таблицу `support_messages` (поля: id, user_id, telegram_user_id, message, is_from_user, is_read, created_at).
+  - Если сообщение от пользователя — создавай или обновляй чат в таблице `support_chats` (поля: id, user_id, telegram_user_id, last_message, last_activity, status).
+- Для отправки ответа используй метод `sendMessage` Telegram Bot API.
+
+### 2. Админ-панель (фронтенд)
+
+- В админ-панели (`/admin`) добавь раздел «Поддержка».
+- Отображай список активных чатов: пользователь (email или Telegram ID), последнее сообщение, дата, статус (открыт / закрыт).
+- При клике на чат открывай окно переписки:
+  - Слева — сообщения пользователя (сверху вниз).
+  - Снизу — поле ввода ответа и кнопка «Отправить».
+- При отправке ответа:
+  - Сохраняй сообщение в БД (is_from_user = false).
+  - Отправляй его пользователю через Telegram Bot API.
+  - Обновляй `last_activity` в чате.
+- Добавь уведомления о новых сообщениях (например, звук или счётчик в заголовке).
+
+### 3. База данных (Replit DB)
+
+Создай таблицы:
+
+**`support_chats`**:
+- `id` (INT, primary key)
+- `user_id` (ссылка на `profiles.id`, может быть NULL для неавторизованных)
+- `telegram_user_id` (INT, ID пользователя в Telegram)
+- `last_message` (TEXT)
+- `last_activity` (TIMESTAMP)
+- `status` (TEXT, default 'open') — open / closed
+
+**`support_messages`**:
+- `id` (INT, primary key)
+- `chat_id` (INT, foreign key → support_chats.id)
+- `telegram_user_id` (INT)
+- `message` (TEXT)
+- `is_from_user` (BOOLEAN) — true = сообщение от пользователя, false = от оператора
+- `is_read` (BOOLEAN, default false)
+- `created_at` (TIMESTAMP)
+
+### 4. API-маршруты
+
+Создай эндпоинты (только для авторизованных с `is_developer = true`):
+
+- `GET /api/support/chats` — список всех чатов.
+- `GET /api/support/chats/:chatId/messages` — история сообщений.
+- `POST /api/support/chats/:chatId/reply` — отправить ответ пользователю (принимает `{ message }`).
+- `POST /api/telegram/webhook` — вебхук для Telegram (публичный, без авторизации).
+
+### 5. Интерфейс
+
+- В админ-панели добавь вкладку «Поддержка» с двумя панелями: список чатов слева, окно переписки справа.
+- Стиль — единый с остальным приложением (светлая тема, Tailwind).
+- Добавь индикатор непрочитанных сообщений.
+
+### 6. Проверка
+
+- Напиши боту в Telegram — сообщение должно появиться в админ-панели.
+- Ответь из админ-панели — сообщение должно прийти в Telegram.
+- Проверь, что история сохраняется и чаты группируются по пользователям.
+
+**Важно:** Не удаляй существующий функционал. Все изменения — только добавления.

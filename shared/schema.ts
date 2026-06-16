@@ -40,6 +40,42 @@ export const insertUserSchema = createInsertSchema(users).pick({
   password: true,
 });
 
+export const supportChats = pgTable("support_chats", {
+  id: varchar("id").primaryKey().default("gen_random_uuid()"),
+  userId: varchar("user_id"),
+  telegramUserId: varchar("telegram_user_id").notNull(),
+  lastMessage: text("last_message"),
+  lastActivity: timestamp("last_activity").defaultNow(),
+  status: text("status").notNull().default("open"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const supportMessages = pgTable("support_messages", {
+  id: varchar("id").primaryKey().default("gen_random_uuid()"),
+  chatId: varchar("chat_id").notNull(),
+  telegramUserId: varchar("telegram_user_id"),
+  message: text("message").notNull(),
+  isFromUser: text("is_from_user").notNull().default("true"),
+  isRead: text("is_read").notNull().default("false"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSupportChatSchema = createInsertSchema(supportChats).omit({
+  id: true,
+  createdAt: true,
+  lastActivity: true,
+});
+
+export const insertSupportMessageSchema = createInsertSchema(supportMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type SupportChat = typeof supportChats.$inferSelect;
+export type InsertSupportChat = z.infer<typeof insertSupportChatSchema>;
+export type SupportMessage = typeof supportMessages.$inferSelect;
+export type InsertSupportMessage = z.infer<typeof insertSupportMessageSchema>;
+
 export type GptAnalysis = {
   title: string;
   description: string;
