@@ -168,12 +168,10 @@ export default function PaymentSuccess() {
         )}
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Button asChild className="gap-2">
-            <Link href="/">
-              <Sparkles className="w-4 h-4" />
-              Создать карточку
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+          <Button className="gap-2" onClick={() => { window.location.href = "/"; }}>
+            <Sparkles className="w-4 h-4" />
+            Перейти к генерации
+            <ArrowRight className="w-4 h-4" />
           </Button>
           <Button variant="outline" asChild>
             <Link href="/pricing">Тарифы</Link>

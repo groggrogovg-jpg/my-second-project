@@ -118,6 +118,15 @@ export default function Home() {
     else setProBalance(Math.max(0, n));
   };
 
+  useEffect(() => {
+    const onStorage = () => {
+      setNano2Balance(getBalance(NANO2_BALANCE_KEY));
+      setProBalance(getBalance(PRO_BALANCE_KEY));
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   const handleAuthSubmit = () => {
     const name = authUsername.trim();
     if (!name) return;
