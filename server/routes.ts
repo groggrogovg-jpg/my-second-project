@@ -740,7 +740,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const amount = getTestPrice(pkg.price);
         const label = `pkg-${packageId}-${Date.now()}`;
         const comment = `КардоМатик: ${pkg.name}`;
-        console.log(`[payment/create] ✓ amount=${amount}₽ label=${label}`);
+        const username = (req.body?.username as string) || "";
+        console.log(`[payment/create] ✓ amount=${amount}₽ label=${label} user=${username || "anon"}`);
 
         const wallet = process.env.VITE_YOOMONEY_WALLET || "";
         if (!wallet) console.warn(`[payment/create] ⚠ VITE_YOOMONEY_WALLET not set`);
@@ -760,7 +761,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
         const url = `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`;
 
-        await storage.recordPayment({ label, starsToAdd: 0, cardsIncluded: pkg.cardsIncluded, modelType: pkg.modelType, operationId: "", amount: String(amount) });
+        await storage.recordPayment({ label, starsToAdd: 0, cardsIncluded: pkg.cardsIncluded, modelType: pkg.modelType, operationId: "", amount: String(amount), username });
         console.log(`[payment/create] ✓ DONE returning url for package`);
         return res.json({ url, label, cards: pkg.cardsIncluded, model: pkg.modelType });
       }
