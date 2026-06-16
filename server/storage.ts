@@ -30,6 +30,26 @@ export interface ErrorLog {
   createdAt: Date;
 }
 
+export interface SupportChat {
+  id: string;
+  userId: string | null;
+  telegramUserId: string;
+  lastMessage: string | null;
+  lastActivity: Date;
+  status: "open" | "closed";
+  createdAt: Date;
+}
+
+export interface SupportMessage {
+  id: string;
+  chatId: string;
+  telegramUserId: string | null;
+  message: string;
+  isFromUser: boolean;
+  isRead: boolean;
+  createdAt: Date;
+}
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -53,6 +73,16 @@ export interface IStorage {
   // Error logs
   addErrorLog(log: Omit<ErrorLog, "id" | "createdAt">): Promise<ErrorLog>;
   getErrorLogs(): Promise<ErrorLog[]>;
+  // Support
+  getOrCreateSupportChat(telegramUserId: string, userId?: string): Promise<SupportChat>;
+  getSupportChat(id: string): Promise<SupportChat | undefined>;
+  getSupportChatByTelegramId(telegramUserId: string): Promise<SupportChat | undefined>;
+  listSupportChats(): Promise<SupportChat[]>;
+  updateSupportChatStatus(id: string, status: "open" | "closed"): Promise<SupportChat | undefined>;
+  addSupportMessage(msg: Omit<SupportMessage, "id" | "createdAt">): Promise<SupportMessage>;
+  getSupportMessages(chatId: string): Promise<SupportMessage[]>;
+  markMessagesRead(chatId: string): Promise<void>;
+  countUnreadMessages(chatId: string): Promise<number>;
 }
 
 export class MemStorage implements IStorage {
@@ -61,6 +91,8 @@ export class MemStorage implements IStorage {
   private payments: Map<string, PaymentRecord>;
   private serverUsers: Map<string, ServerUser>;
   private errorLogs: ErrorLog[];
+  private supportChats: Map<string, SupportChat>;
+  private supportMessages: Map<string, SupportMessage>;
 
   constructor() {
     this.users = new Map();
@@ -68,6 +100,8 @@ export class MemStorage implements IStorage {
     this.payments = new Map();
     this.serverUsers = new Map();
     this.errorLogs = [];
+    this.supportChats = new Map();
+    this.supportMessages = new Map();
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -238,6 +272,87 @@ export class MemStorage implements IStorage {
 
   async getErrorLogs(): Promise<ErrorLog[]> {
     return [...this.errorLogs];
+  }
+
+  // === Support ===
+  async getOrCreateSupportChat(telegramUserId: string, userId?: string): Promise<SupportChat> {
+    const existing = Array.from(this.supportChats.values()).find(
+      (c) => c.telegramUserId === telegramUserId
+    );
+    if (existing) return existing;
+    const chat: SupportChat = {
+      id: randomUUID(),
+      userId: userId || null,
+      telegramUserId,
+      lastMessage: null,
+      lastActivity: new Date(),
+      status: "open",
+      createdAt: new Date(),
+    };
+    this.supportChats.set(chat.id, chat);
+    return chat;
+  }
+
+  async getSupportChat(id: string): Promise<SupportChat | undefined> {
+    return this.supportChats.get(id);
+  }
+
+  async getSupportChatByTelegramId(telegramUserId: string): Promise<SupportChat | undefined> {
+    return Array.from(this.supportChats.values()).find(
+      (c) => c.telegramUserId === telegramUserId
+    );
+  }
+
+  async listSupportChats(): Promise<SupportChat[]> {
+    return Array.from(this.supportChats.values()).sort(
+      (a, b) => b.lastActivity.getTime() - a.lastActivity.getTime()
+    );
+  }
+
+  async updateSupportChatStatus(id: string, status: "open" | "closed"): Promise<SupportChat | undefined> {
+    const chat = this.supportChats.get(id);
+    if (!chat) return undefined;
+    chat.status = status;
+    this.supportChats.set(id, chat);
+    return chat;
+  }
+
+  async addSupportMessage(msg: Omit<SupportMessage, "id" | "createdAt">): Promise<SupportMessage> {
+    const message: SupportMessage = {
+      id: randomUUID(),
+      ...msg,
+      createdAt: new Date(),
+    };
+    this.supportMessages.set(message.id, message);
+    // Update chat lastMessage and lastActivity
+    const chat = this.supportChats.get(msg.chatId);
+    if (chat) {
+      chat.lastMessage = msg.message;
+      chat.lastActivity = new Date();
+      this.supportChats.set(chat.id, chat);
+    }
+    return message;
+  }
+
+  async getSupportMessages(chatId: string): Promise<SupportMessage[]> {
+    return Array.from(this.supportMessages.values())
+      .filter((m) => m.chatId === chatId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  async markMessagesRead(chatId: string): Promise<void> {
+    for (const [id, msg] of this.supportMessages.entries()) {
+      if (msg.chatId === chatId && msg.isFromUser) {
+        msg.isRead = true;
+        this.supportMessages.set(id, msg);
+      }
+    }
+  }
+
+  async countUnreadMessages(chatId: string): Promise<number> {
+    return Array.from(this.supportMessages.values()).filter(
+      (m) => m.chatId === chatId && m.isFromUser && !m.isRead
+    ).length;
   }
 }
 

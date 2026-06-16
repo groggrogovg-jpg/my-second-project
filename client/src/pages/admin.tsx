@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Sparkles, Users, CreditCard, AlertTriangle,
   RefreshCw, ChevronLeft, ChevronRight, Loader2, ShieldCheck,
+  MessageCircle, Send, CircleDot, CheckCircle2,
 } from "lucide-react";
 
 const DEV_CODE_KEY = "kardo_dev_code";
@@ -22,7 +23,26 @@ function adminHeaders() {
   return { "Content-Type": "application/json", "x-dev-code": getDevCode() };
 }
 
-type AdminTab = "users" | "payments" | "logs";
+type AdminTab = "users" | "payments" | "logs" | "support";
+
+interface SupportChat {
+  id: string;
+  telegramUserId: string;
+  lastMessage: string | null;
+  lastActivity: string;
+  status: "open" | "closed";
+  unreadCount: number;
+}
+
+interface SupportMessage {
+  id: string;
+  chatId: string;
+  telegramUserId: string | null;
+  message: string;
+  isFromUser: boolean;
+  isRead: boolean;
+  createdAt: string;
+}
 
 interface ServerUser {
   username: string;
@@ -139,6 +159,7 @@ export default function Admin() {
             { id: "users", label: "Пользователи", icon: <Users className="w-3.5 h-3.5" /> },
             { id: "payments", label: "Платежи", icon: <CreditCard className="w-3.5 h-3.5" /> },
             { id: "logs", label: "Логи ошибок", icon: <AlertTriangle className="w-3.5 h-3.5" /> },
+            { id: "support", label: "Поддержка", icon: <MessageCircle className="w-3.5 h-3.5" /> },
           ] as { id: AdminTab; label: string; icon: React.ReactNode }[]).map((t) => (
             <button
               key={t.id}
@@ -155,6 +176,7 @@ export default function Admin() {
         {tab === "users" && <UsersTab />}
         {tab === "payments" && <PaymentsTab />}
         {tab === "logs" && <LogsTab />}
+        {tab === "support" && <SupportTab />}
       </main>
     </div>
   );
@@ -438,6 +460,234 @@ function LogsTab() {
           {totalPages > 1 && <Pagination page={page} total={totalPages} onChange={setPage} />}
         </Card>
       )}
+    </div>
+  );
+}
+
+function SupportTab() {
+  const [chats, setChats] = useState<SupportChat[]>([]);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<SupportMessage[]>([]);
+  const [replyText, setReplyText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [pollInterval, setPollInterval] = useState<ReturnType<typeof setInterval> | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const { toast } = useToast();
+
+  const loadChats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/support/chats", { headers: adminHeaders() });
+      if (!res.ok) throw new Error("Ошибка загрузки");
+      const data = await res.json();
+      setChats(data);
+      // If selected chat no longer exists, deselect
+      if (selectedChatId && !data.find((c: SupportChat) => c.id === selectedChatId)) {
+        setSelectedChatId(null);
+        setMessages([]);
+      }
+    } catch (e: any) {
+      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+    }
+  }, [selectedChatId]);
+
+  const loadMessages = useCallback(async (chatId: string) => {
+    try {
+      const res = await fetch(`/api/support/chats/${encodeURIComponent(chatId)}/messages`, { headers: adminHeaders() });
+      if (!res.ok) throw new Error("Ошибка загрузки");
+      const data = await res.json();
+      setMessages(data);
+      // Mark as read
+      await fetch(`/api/support/chats/${encodeURIComponent(chatId)}/read`, {
+        method: "POST",
+        headers: adminHeaders(),
+      });
+      // Refresh unread counts
+      loadChats();
+    } catch (e: any) {
+      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+    }
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    loadChats().finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (pollInterval) clearInterval(pollInterval);
+    if (selectedChatId) {
+      loadMessages(selectedChatId);
+      const id = setInterval(() => loadMessages(selectedChatId), 3000);
+      setPollInterval(id);
+    }
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [selectedChatId]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleSend = async () => {
+    if (!replyText.trim() || !selectedChatId) return;
+    setSending(true);
+    try {
+      const res = await fetch(`/api/support/chats/${encodeURIComponent(selectedChatId)}/reply`, {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ message: replyText.trim() }),
+      });
+      if (!res.ok) throw new Error("Ошибка отправки");
+      const data = await res.json();
+      setReplyText("");
+      if (data.sent) {
+        toast({ title: "Отправлено", description: "Сообщение доставлено в Telegram" });
+      } else {
+        toast({ title: "Сохранено", description: "Сообщение сохранено, но не отправлено в Telegram (проверьте токен бота)" });
+      }
+      await loadMessages(selectedChatId);
+      await loadChats();
+    } catch (e: any) {
+      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const selectedChat = chats.find((c) => c.id === selectedChatId);
+  const totalUnread = chats.reduce((sum, c) => sum + c.unreadCount, 0);
+
+  return (
+    <div className="flex gap-4 h-[calc(100vh-220px)] min-h-[400px]">
+      {/* Chat list */}
+      <Card className="w-72 flex-shrink-0 flex flex-col overflow-hidden">
+        <div className="p-3 border-b border-border flex items-center justify-between">
+          <span className="text-sm font-semibold text-foreground">Чаты</span>
+          {totalUnread > 0 && (
+            <Badge variant="default" className="text-[10px]">{totalUnread} непрочитано</Badge>
+          )}
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+          ) : chats.length === 0 ? (
+            <div className="p-4 text-center text-xs text-muted-foreground">Нет активных чатов</div>
+          ) : (
+            <div className="divide-y divide-border">
+              {chats.map((chat) => (
+                <button
+                  key={chat.id}
+                  onClick={() => setSelectedChatId(chat.id)}
+                  className={`w-full text-left p-3 transition-colors ${selectedChatId === chat.id ? "bg-muted" : "hover:bg-muted/50"}`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-foreground truncate">{chat.telegramUserId}</span>
+                    {chat.unreadCount > 0 && (
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center font-bold">
+                        {chat.unreadCount}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground truncate">{chat.lastMessage || "—"}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] text-muted-foreground">{fmt(chat.lastActivity)}</span>
+                    <Badge variant={chat.status === "open" ? "default" : "secondary"} className="text-[10px] h-4 px-1">
+                      {chat.status === "open" ? "Открыт" : "Закрыт"}
+                    </Badge>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Chat window */}
+      <Card className="flex-1 flex flex-col overflow-hidden">
+        {selectedChat ? (
+          <>
+            <div className="p-3 border-b border-border flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CircleDot className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-foreground">{selectedChat.telegramUserId}</span>
+                <Badge variant={selectedChat.status === "open" ? "default" : "secondary"} className="text-[10px]">
+                  {selectedChat.status === "open" ? "Открыт" : "Закрыт"}
+                </Badge>
+              </div>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[10px] px-2"
+                  onClick={async () => {
+                    const newStatus = selectedChat.status === "open" ? "closed" : "open";
+                    await fetch(`/api/support/chats/${encodeURIComponent(selectedChat.id)}/status`, {
+                      method: "POST",
+                      headers: adminHeaders(),
+                      body: JSON.stringify({ status: newStatus }),
+                    });
+                    loadChats();
+                  }}
+                >
+                  {selectedChat.status === "open" ? "Закрыть" : "Открыть"}
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => loadMessages(selectedChat.id)}>
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              {messages.length === 0 ? (
+                <div className="text-center text-xs text-muted-foreground py-8">Нет сообщений</div>
+              ) : (
+                messages.map((msg) => (
+                  <div key={msg.id} className={`flex ${msg.isFromUser ? "justify-start" : "justify-end"}`}>
+                    <div className={`max-w-[80%] rounded-lg px-3 py-2 text-xs ${
+                      msg.isFromUser
+                        ? "bg-muted text-foreground"
+                        : "bg-primary text-primary-foreground"
+                    }`}>
+                      <p>{msg.message}</p>
+                      <p className={`text-[10px] mt-1 ${msg.isFromUser ? "text-muted-foreground" : "text-primary-foreground/70"}`}>
+                        {fmt(msg.createdAt)}
+                        {!msg.isFromUser && (
+                          <span className="ml-1 inline-flex items-center gap-0.5">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            Оператор
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <div className="p-3 border-t border-border flex gap-2">
+              <input
+                type="text"
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !sending && handleSend()}
+                placeholder="Введите ответ..."
+                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                data-testid="input-support-reply"
+              />
+              <Button size="sm" onClick={handleSend} disabled={sending || !replyText.trim()} data-testid="button-send-reply">
+                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+            Выберите чат из списка слева
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

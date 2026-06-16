@@ -911,6 +911,116 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
+  // ===== Telegram Bot Webhook и Support API =====
+  const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+  const TELEGRAM_API_BASE = TELEGRAM_BOT_TOKEN ? `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}` : "";
+
+  async function sendTelegramMessage(chatId: string | number, text: string): Promise<boolean> {
+    if (!TELEGRAM_BOT_TOKEN) return false;
+    try {
+      const resp = await axios.post(`${TELEGRAM_API_BASE}/sendMessage`, {
+        chat_id: chatId,
+        text,
+        parse_mode: "HTML",
+      });
+      return resp.data?.ok === true;
+    } catch (err: any) {
+      console.error(`[telegram] sendMessage error: ${err.message}`);
+      return false;
+    }
+  }
+
+  // Telegram webhook — публичный, без авторизации
+  app.post("/api/telegram/webhook", express.json(), async (req: Request, res: Response) => {
+    try {
+      const { message, callback_query } = req.body;
+      if (message && message.text && message.from) {
+        const telegramUserId = String(message.from.id);
+        const text = message.text;
+        const chatId = message.chat.id;
+        console.log(`[telegram] message from ${telegramUserId}: "${text.substring(0, 50)}${text.length > 50 ? "..." : ""}"`);
+
+        // Создаём или находим чат
+        const supportChat = await storage.getOrCreateSupportChat(telegramUserId);
+        // Сохраняем сообщение
+        await storage.addSupportMessage({
+          chatId: supportChat.id,
+          telegramUserId,
+          message: text,
+          isFromUser: true,
+          isRead: false,
+        });
+        // Авто-ответ пользователю
+        await sendTelegramMessage(chatId, "Ваше сообщение передано оператору. Ответим в ближайшее время.");
+      }
+      res.status(200).json({ ok: true });
+    } catch (err: any) {
+      console.error(`[telegram] webhook error: ${err.message}`);
+      res.status(200).json({ ok: true });
+    }
+  });
+
+  // Админ маршруты поддержки
+  app.get("/api/support/chats", adminOnly, async (_req: Request, res: Response) => {
+    const chats = await storage.listSupportChats();
+    const withUnread = await Promise.all(
+      chats.map(async (chat) => ({
+        ...chat,
+        unreadCount: await storage.countUnreadMessages(chat.id),
+      }))
+    );
+    res.json(withUnread);
+  });
+
+  app.get("/api/support/chats/:chatId/messages", adminOnly, async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    const messages = await storage.getSupportMessages(chatId);
+    res.json(messages);
+  });
+
+  app.post("/api/support/chats/:chatId/reply", adminOnly, async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    const { message } = req.body as { message?: string };
+    if (!message || !message.trim()) {
+      return res.status(400).json({ error: "Сообщение обязательно" });
+    }
+
+    const chat = await storage.getSupportChat(chatId);
+    if (!chat) return res.status(404).json({ error: "Чат не найден" });
+
+    // Сохраняем ответ в БД
+    const reply = await storage.addSupportMessage({
+      chatId,
+      telegramUserId: null,
+      message: message.trim(),
+      isFromUser: false,
+      isRead: true,
+    });
+
+    // Отправляем в Telegram
+    const sent = await sendTelegramMessage(Number(chat.telegramUserId), message.trim());
+    console.log(`[support] reply to chatId=${chatId} telegramId=${chat.telegramUserId} sent=${sent}`);
+
+    res.json({ ok: true, message: reply, sent });
+  });
+
+  app.post("/api/support/chats/:chatId/read", adminOnly, async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    await storage.markMessagesRead(chatId);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/support/chats/:chatId/status", adminOnly, async (req: Request, res: Response) => {
+    const { chatId } = req.params;
+    const { status } = req.body as { status?: "open" | "closed" };
+    if (!status || !["open", "closed"].includes(status)) {
+      return res.status(400).json({ error: "status должен быть open или closed" });
+    }
+    const chat = await storage.updateSupportChatStatus(chatId, status);
+    if (!chat) return res.status(404).json({ error: "Чат не найден" });
+    res.json({ ok: true, chat });
+  });
+
   // Перегенерация карточки с изменённым текстом
   app.post("/api/regenerate", async (req: Request, res: Response) => {
     try {
