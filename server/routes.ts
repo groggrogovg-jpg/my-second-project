@@ -8,6 +8,7 @@ import axios from "axios";
 import path from "path";
 import crypto from "crypto";
 import { URL } from "url";
+import bcrypt from "bcrypt";
 
 const YM_NOTIFY_SECRET = process.env.YOOMONEY_NOTIFICATION_SECRET || "";
 const DEV_PROMO_CODE = process.env.DEV_PROMO_CODE || "DEV100";
@@ -740,7 +741,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const amount = getTestPrice(pkg.price);
         const label = `pkg-${packageId}-${Date.now()}`;
         const comment = `КардоМатик: ${pkg.name}`;
-        const username = (req.body?.username as string) || "";
+        const username = (req.body?.username as string) || (req.session as any).username || "";
         console.log(`[payment/create] ✓ amount=${amount}₽ label=${label} user=${username || "anon"}`);
 
         const wallet = process.env.VITE_YOOMONEY_WALLET || "";
@@ -1210,6 +1211,88 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       console.error(`[edit-background] ✗ ERROR: ${message}${axiosDetail}`);
       res.status(500).json({ error: message + axiosDetail });
     }
+  });
+
+  // ===== AUTH =====
+
+  app.post("/api/auth/register", async (req: Request, res: Response) => {
+    try {
+      const { username, password } = req.body as { username: string; password: string };
+      if (!username?.trim() || !password) {
+        return res.status(400).json({ error: "Логин и пароль обязательны" });
+      }
+      const trimmed = username.trim();
+      if (trimmed.length < 2) return res.status(400).json({ error: "Логин минимум 2 символа" });
+      if (password.length < 6) return res.status(400).json({ error: "Пароль минимум 6 символов" });
+      const existing = await storage.getAppUserByUsername(trimmed);
+      if (existing) return res.status(409).json({ error: "Пользователь с таким логином уже существует" });
+      const passwordHash = await bcrypt.hash(password, 10);
+      const user = await storage.createAppUser(trimmed, passwordHash);
+      await storage.trackUser(trimmed);
+      req.session.userId = user.id;
+      req.session.username = user.username;
+      res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, trialCount: user.trialCount });
+    } catch (err: any) {
+      console.error("[auth/register] error:", err);
+      res.status(500).json({ error: "Ошибка регистрации" });
+    }
+  });
+
+  app.post("/api/auth/login", async (req: Request, res: Response) => {
+    try {
+      const { username, password } = req.body as { username: string; password: string };
+      if (!username?.trim() || !password) {
+        return res.status(400).json({ error: "Логин и пароль обязательны" });
+      }
+      const user = await storage.getAppUserByUsername(username.trim());
+      if (!user) return res.status(401).json({ error: "Неверный логин или пароль" });
+      const ok = await bcrypt.compare(password, user.passwordHash);
+      if (!ok) return res.status(401).json({ error: "Неверный логин или пароль" });
+      // Применяем ожидающие зачисления от администратора
+      const pending = await storage.consumePendingCredits(user.username);
+      if (pending.nano2 > 0 || pending.pro > 0) {
+        await storage.updateAppUserBalances(user.id, user.nano2Balance + pending.nano2, user.proBalance + pending.pro);
+        user.nano2Balance += pending.nano2;
+        user.proBalance += pending.pro;
+      }
+      req.session.userId = user.id;
+      req.session.username = user.username;
+      res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, trialCount: user.trialCount });
+    } catch (err: any) {
+      console.error("[auth/login] error:", err);
+      res.status(500).json({ error: "Ошибка входа" });
+    }
+  });
+
+  app.post("/api/auth/logout", (req: Request, res: Response) => {
+    req.session.destroy(() => {});
+    res.json({ ok: true });
+  });
+
+  app.get("/api/auth/me", async (req: Request, res: Response) => {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Не авторизован" });
+    const user = await storage.getAppUserById(userId);
+    if (!user) return res.status(401).json({ error: "Пользователь не найден" });
+    res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, trialCount: user.trialCount });
+  });
+
+  app.post("/api/auth/balance", async (req: Request, res: Response) => {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Не авторизован" });
+    const { nano2Balance, proBalance } = req.body as { nano2Balance: number; proBalance: number };
+    await storage.updateAppUserBalances(userId, nano2Balance, proBalance);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/auth/trial", async (req: Request, res: Response) => {
+    const userId = req.session?.userId;
+    if (userId) {
+      await storage.incrementAppUserTrial(userId);
+      const user = await storage.getAppUserById(userId);
+      return res.json({ trialCount: user?.trialCount ?? 0 });
+    }
+    res.json({ ok: true });
   });
 
   return httpServer;

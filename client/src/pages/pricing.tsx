@@ -134,11 +134,11 @@ function PackagesGrid({
   const handlePay = async (packageId: string) => {
     setLoadingId(packageId);
     try {
-      const username = localStorage.getItem("kardo_user") || "";
+      // username берётся из сессии на сервере
       const res = await fetch("/api/payment/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageId, username }),
+        body: JSON.stringify({ packageId }),
       });
       const data = await res.json();
       if (!res.ok || !data.url) {

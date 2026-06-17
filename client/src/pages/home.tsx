@@ -32,29 +32,21 @@ const GARMENT_CATEGORIES: { id: GarmentCategory; label: string; examples: string
   { id: "extra", label: "Дополнительно", examples: "Сумка, ремень, часы, бижутерия, пальто" },
 ];
 
-const NANO2_BALANCE_KEY = "kardo_nano2_balance";
-const PRO_BALANCE_KEY = "kardo_pro_balance";
 const TRIAL_COUNT_KEY = "kardo_trial_count";
-const USER_KEY = "kardo_user";
 
-function getTrialCount(): number {
+function getLocalTrialCount(): number {
   return parseInt(localStorage.getItem(TRIAL_COUNT_KEY) || "0", 10);
 }
-function setTrialCount(n: number) {
+function setLocalTrialCount(n: number) {
   localStorage.setItem(TRIAL_COUNT_KEY, String(Math.max(0, n)));
 }
-function getBalance(key: string): number {
-  return parseInt(localStorage.getItem(key) || "0", 10);
-}
-function setBalance(key: string, n: number) {
-  localStorage.setItem(key, String(Math.max(0, n)));
-}
-function getUsername(): string | null {
-  return localStorage.getItem(USER_KEY);
-}
-function setUsername(name: string | null) {
-  if (name) localStorage.setItem(USER_KEY, name);
-  else localStorage.removeItem(USER_KEY);
+
+interface AuthUser {
+  id: string;
+  username: string;
+  nano2Balance: number;
+  proBalance: number;
+  trialCount: number;
 }
 
 type ContentTab = "photo" | "card";
@@ -78,13 +70,20 @@ export default function Home() {
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatioId>("1:1");
   const [activeGenerationId, setActiveGenerationId] = useState<string | null>(null);
 
-  const [username, setUsernameState] = useState<string | null>(getUsername);
-  const [nano2Balance, setNano2Balance] = useState<number>(() => getBalance(NANO2_BALANCE_KEY));
-  const [proBalance, setProBalance] = useState<number>(() => getBalance(PRO_BALANCE_KEY));
-  const [trialCount, setTrialCountState] = useState<number>(getTrialCount);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [trialCount, setTrialCountState] = useState<number>(getLocalTrialCount);
+
+  const username = authUser?.username ?? null;
+  const nano2Balance = authUser?.nano2Balance ?? 0;
+  const proBalance = authUser?.proBalance ?? 0;
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authUsername, setAuthUsername] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const [isTrialGeneration, setIsTrialGeneration] = useState(false);
 
   const [activeTab, setActiveTab] = useState<ContentTab>("card");
@@ -107,57 +106,74 @@ export default function Home() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const isAuth = !!username;
+  const isAuth = !!authUser;
   const currentBalance = selectedModel === "nano-banana-2" ? nano2Balance : proBalance;
   const tryonBalance = nano2Balance;
 
-  const updateBalance = (model: ModelId, n: number) => {
-    const key = model === "nano-banana-2" ? NANO2_BALANCE_KEY : PRO_BALANCE_KEY;
-    setBalance(key, n);
-    if (model === "nano-banana-2") setNano2Balance(Math.max(0, n));
-    else setProBalance(Math.max(0, n));
-  };
-
+  // Проверяем сессию при загрузке
   useEffect(() => {
-    const onStorage = () => {
-      setNano2Balance(getBalance(NANO2_BALANCE_KEY));
-      setProBalance(getBalance(PRO_BALANCE_KEY));
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
-
-  const handleAuthSubmit = () => {
-    const name = authUsername.trim();
-    if (!name) return;
-    setUsername(name);
-    setUsernameState(name);
-    setAuthModalOpen(false);
-    setAuthUsername("");
-    toast({ title: `Добро пожаловать, ${name}!`, description: "Теперь купите пакет карточек для генерации без водяных знаков." });
-    // Трекинг + проверка ожидающих зачислений от администратора
-    fetch("/api/user/track", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: name }),
-    }).catch(() => {});
-    fetch(`/api/user/pending-credits?username=${encodeURIComponent(name)}`)
-      .then((r) => r.json())
-      .then((credits: { nano2: number; pro: number }) => {
-        if (credits.nano2 > 0 || credits.pro > 0) {
-          const curNano2 = parseInt(localStorage.getItem("kardo_nano2_balance") || "0", 10);
-          const curPro = parseInt(localStorage.getItem("kardo_pro_balance") || "0", 10);
-          if (credits.nano2 > 0) localStorage.setItem("kardo_nano2_balance", String(curNano2 + credits.nano2));
-          if (credits.pro > 0) localStorage.setItem("kardo_pro_balance", String(curPro + credits.pro));
-          toast({ title: "Зачислены карточки!", description: `+${credits.nano2} Nano2, +${credits.pro} Pro от администратора.` });
+    fetch("/api/auth/me")
+      .then((r) => r.ok ? r.json() : null)
+      .then((user: AuthUser | null) => {
+        if (user) {
+          setAuthUser(user);
+          // Синхронизируем trialCount с сервером
+          if (user.trialCount > 0) setTrialCountState(user.trialCount);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setSessionChecked(true));
+  }, []);
+
+  // Обновляем балансы на сервере после изменения
+  const syncBalancesToServer = (newNano2: number, newPro: number) => {
+    fetch("/api/auth/balance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nano2Balance: newNano2, proBalance: newPro }),
+    }).catch(() => {});
   };
 
-  const handleLogout = () => {
-    setUsername(null);
-    setUsernameState(null);
+  const updateBalance = (model: ModelId, n: number) => {
+    const newNano2 = model === "nano-banana-2" ? Math.max(0, n) : nano2Balance;
+    const newPro = model !== "nano-banana-2" ? Math.max(0, n) : proBalance;
+    setAuthUser((prev) => prev ? { ...prev, nano2Balance: newNano2, proBalance: newPro } : prev);
+    syncBalancesToServer(newNano2, newPro);
+  };
+
+  const handleAuthSubmit = async () => {
+    const name = authUsername.trim();
+    if (!name || !authPassword) return;
+    setAuthError("");
+    setAuthLoading(true);
+    try {
+      const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: name, password: authPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.error || "Ошибка");
+        return;
+      }
+      setAuthUser(data as AuthUser);
+      setAuthModalOpen(false);
+      setAuthUsername("");
+      setAuthPassword("");
+      setAuthError("");
+      toast({ title: authMode === "login" ? `Добро пожаловать, ${data.username}!` : `Аккаунт создан, ${data.username}!` });
+    } catch {
+      setAuthError("Ошибка соединения");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    setAuthUser(null);
     toast({ title: "Вы вышли из аккаунта" });
   };
 
@@ -209,15 +225,16 @@ export default function Home() {
       if (isAuth) {
         const genType = (polledGeneration as any).generationType || "card";
         if (genType === "tryon") {
-          updateBalance("nano-banana-2", getBalance(NANO2_BALANCE_KEY) - 1);
+          updateBalance("nano-banana-2", nano2Balance - 1);
         } else {
           const model = (polledGeneration.model as ModelId) || selectedModel;
-          updateBalance(model, getBalance(model === "nano-banana-2" ? NANO2_BALANCE_KEY : PRO_BALANCE_KEY) - 1);
+          updateBalance(model, (model === "nano-banana-2" ? nano2Balance : proBalance) - 1);
         }
       } else {
-        const newCount = getTrialCount() + 1;
-        setTrialCount(newCount);
+        const newCount = getLocalTrialCount() + 1;
+        setLocalTrialCount(newCount);
         setTrialCountState(newCount);
+        fetch("/api/auth/trial", { method: "POST" }).catch(() => {});
       }
     }
     if (polledGeneration.status === "error") {
@@ -251,8 +268,7 @@ export default function Home() {
       formData.append("aspectRatio", selectedAspectRatio);
       if (notes.trim()) formData.append("notes", notes.trim());
       if (noText) formData.append("noText", "true");
-      const _username = localStorage.getItem("kardo_user") || "";
-      if (_username) formData.append("username", _username);
+      if (authUser?.username) formData.append("username", authUser.username);
       const response = await fetch("/api/generate", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -278,8 +294,7 @@ export default function Home() {
       formData.append("image", file);
       formData.append("duration", String(duration));
       if (prompt.trim()) formData.append("prompt", prompt.trim());
-      const _uv = localStorage.getItem("kardo_user") || "";
-      if (_uv) formData.append("username", _uv);
+      if (authUser?.username) formData.append("username", authUser.username);
       const response = await fetch("/api/generate-video", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -303,8 +318,7 @@ export default function Home() {
       const formData = new FormData();
       formData.append("person", personFile);
       garmentFiles.forEach((f) => formData.append("garment", f));
-      const _ut = localStorage.getItem("kardo_user") || "";
-      if (_ut) formData.append("username", _ut);
+      if (authUser?.username) formData.append("username", authUser.username);
       const response = await fetch("/api/generate-tryon", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -436,27 +450,64 @@ export default function Home() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <Card className="w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-lg">Войти / Зарегистрироваться</h2>
-              <button onClick={() => setAuthModalOpen(false)} className="text-muted-foreground hover:text-foreground">
+              <h2 className="font-bold text-lg">
+                {authMode === "login" ? "Войти в аккаунт" : "Регистрация"}
+              </h2>
+              <button onClick={() => { setAuthModalOpen(false); setAuthError(""); }} className="text-muted-foreground hover:text-foreground">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Введите имя пользователя. После регистрации вы сможете купить пакеты карточек и генерировать без водяных знаков.
-            </p>
-            <input
-              type="text"
-              value={authUsername}
-              onChange={(e) => setAuthUsername(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAuthSubmit(); }}
-              placeholder="Ваше имя или email"
-              className="w-full h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-              autoFocus
-              data-testid="input-auth-username"
-            />
-            <Button className="w-full" onClick={handleAuthSubmit} disabled={!authUsername.trim()} data-testid="button-auth-submit">
-              Продолжить
+
+            <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+              <button
+                onClick={() => { setAuthMode("login"); setAuthError(""); }}
+                className={`flex-1 py-2 transition-colors ${authMode === "login" ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Войти
+              </button>
+              <button
+                onClick={() => { setAuthMode("register"); setAuthError(""); }}
+                className={`flex-1 py-2 transition-colors ${authMode === "register" ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Регистрация
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={authUsername}
+                onChange={(e) => setAuthUsername(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAuthSubmit(); }}
+                placeholder="Логин"
+                className="w-full h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                autoFocus
+                data-testid="input-auth-username"
+              />
+              <input
+                type="password"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAuthSubmit(); }}
+                placeholder={authMode === "register" ? "Пароль (минимум 6 символов)" : "Пароль"}
+                className="w-full h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                data-testid="input-auth-password"
+              />
+            </div>
+
+            {authError && (
+              <p className="text-xs text-destructive bg-destructive/10 rounded-md px-3 py-2">{authError}</p>
+            )}
+
+            <Button
+              className="w-full"
+              onClick={handleAuthSubmit}
+              disabled={!authUsername.trim() || !authPassword || authLoading}
+              data-testid="button-auth-submit"
+            >
+              {authLoading ? "Загрузка..." : authMode === "login" ? "Войти" : "Создать аккаунт"}
             </Button>
+
             <p className="text-xs text-muted-foreground text-center">
               Пробный режим: 3 карточки с водяным знаком бесплатно
             </p>

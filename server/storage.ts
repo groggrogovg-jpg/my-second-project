@@ -1,6 +1,15 @@
 import { type User, type InsertUser, type Generation, type InsertGeneration } from "@shared/schema";
 import { randomUUID } from "crypto";
 
+// Полный аккаунт пользователя на сервере (расширяет User)
+export interface AppUser extends User {
+  passwordHash: string;
+  nano2Balance: number;
+  proBalance: number;
+  trialCount: number;
+  createdAt: Date;
+}
+
 export interface PaymentRecord {
   label: string;
   starsToAdd: number;
@@ -51,6 +60,12 @@ export interface SupportMessage {
 }
 
 export interface IStorage {
+  // Auth
+  createAppUser(username: string, passwordHash: string): Promise<AppUser>;
+  getAppUserById(id: string): Promise<AppUser | undefined>;
+  getAppUserByUsername(username: string): Promise<AppUser | undefined>;
+  updateAppUserBalances(id: string, nano2: number, pro: number): Promise<void>;
+  incrementAppUserTrial(id: string): Promise<void>;
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -87,6 +102,7 @@ export interface IStorage {
 
 export class MemStorage implements IStorage {
   private users: Map<string, User>;
+  private appUsers: Map<string, AppUser>;
   private generations: Map<string, Generation>;
   private payments: Map<string, PaymentRecord>;
   private serverUsers: Map<string, ServerUser>;
@@ -96,12 +112,41 @@ export class MemStorage implements IStorage {
 
   constructor() {
     this.users = new Map();
+    this.appUsers = new Map();
     this.generations = new Map();
     this.payments = new Map();
     this.serverUsers = new Map();
     this.errorLogs = [];
     this.supportChats = new Map();
     this.supportMessages = new Map();
+  }
+
+  async createAppUser(username: string, passwordHash: string): Promise<AppUser> {
+    const id = randomUUID();
+    const user: AppUser = { id, username, password: passwordHash, passwordHash, nano2Balance: 0, proBalance: 0, trialCount: 0, createdAt: new Date() };
+    this.appUsers.set(id, user);
+    return user;
+  }
+
+  async getAppUserById(id: string): Promise<AppUser | undefined> {
+    return this.appUsers.get(id);
+  }
+
+  async getAppUserByUsername(username: string): Promise<AppUser | undefined> {
+    return Array.from(this.appUsers.values()).find((u) => u.username.toLowerCase() === username.toLowerCase());
+  }
+
+  async updateAppUserBalances(id: string, nano2: number, pro: number): Promise<void> {
+    const user = this.appUsers.get(id);
+    if (user) {
+      user.nano2Balance = Math.max(0, nano2);
+      user.proBalance = Math.max(0, pro);
+    }
+  }
+
+  async incrementAppUserTrial(id: string): Promise<void> {
+    const user = this.appUsers.get(id);
+    if (user) user.trialCount++;
   }
 
   async getUser(id: string): Promise<User | undefined> {

@@ -52,17 +52,32 @@ export default function PaymentSuccess() {
       return;
     }
 
-    const creditCards = (cards: number, mdl: "nano2" | "pro") => {
+    const creditCards = async (cards: number, mdl: "nano2" | "pro") => {
       const balKey = mdl === "pro" ? PRO_KEY : NANO2_KEY;
       const current = getBalance(balKey);
-      localStorage.setItem(balKey, String(current + cards));
+      const newBal = current + cards;
+      localStorage.setItem(balKey, String(newBal));
       localStorage.setItem(creditedKey, "1");
       localStorage.setItem(`kardo_credited_cards_${label}`, String(cards));
       localStorage.setItem(`kardo_credited_model_${label}`, mdl);
       localStorage.removeItem("kardo_pending_payment");
       setCardsAdded(cards);
       setModel(mdl);
-      setCurrentBalance(current + cards);
+      setCurrentBalance(newBal);
+      // Синхронизируем баланс с сервером (если пользователь авторизован)
+      try {
+        const meRes = await fetch("/api/auth/me");
+        if (meRes.ok) {
+          const me = await meRes.json();
+          const newNano2 = mdl === "nano2" ? me.nano2Balance + cards : me.nano2Balance;
+          const newPro = mdl === "pro" ? me.proBalance + cards : me.proBalance;
+          await fetch("/api/auth/balance", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nano2Balance: newNano2, proBalance: newPro }),
+          });
+        }
+      } catch { /* игнорируем если не авторизован */ }
     };
 
     const creditStars = (amount: number) => {
@@ -80,9 +95,9 @@ export default function PaymentSuccess() {
       rawModel === "nano2" || rawModel === "pro" ? rawModel : "";
     const starsFromUrl = Number(params.get("stars") || "0");
 
-    const fallbackToUrl = () => {
+    const fallbackToUrl = async () => {
       if (cardsFromUrl > 0 && modelFromUrl) {
-        creditCards(cardsFromUrl, modelFromUrl);
+        await creditCards(cardsFromUrl, modelFromUrl);
       } else if (starsFromUrl > 0) {
         creditStars(starsFromUrl);
       } else {
@@ -100,7 +115,7 @@ export default function PaymentSuccess() {
           if (pollRef.current) clearTimeout(pollRef.current);
 
           if (data.cards > 0 && data.model) {
-            creditCards(data.cards, data.model as "nano2" | "pro");
+            await creditCards(data.cards, data.model as "nano2" | "pro");
           } else if (data.stars > 0) {
             creditStars(data.stars);
           } else {

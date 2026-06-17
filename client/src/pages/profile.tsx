@@ -22,39 +22,34 @@ import {
   MessageCircle,
 } from "lucide-react";
 
-const USER_KEY = "kardo_user";
-const NANO2_BALANCE_KEY = "kardo_nano2_balance";
-const PRO_BALANCE_KEY = "kardo_pro_balance";
-const IS_DEV_KEY = "kardo_is_developer";
-const DEV_CODE_KEY = "kardo_dev_code";
-
-function getBalance(key: string): number {
-  return parseInt(localStorage.getItem(key) || "0", 10);
-}
-function getUsername(): string | null {
-  return localStorage.getItem(USER_KEY);
+interface AuthUser {
+  id: number;
+  username: string;
+  nano2Balance: number;
+  proBalance: number;
+  trialCount: number;
 }
 
 export default function Profile() {
-  const [username, setUsername] = useState<string | null>(getUsername);
-  const [nano2, setNano2] = useState(getBalance(NANO2_BALANCE_KEY));
-  const [pro, setPro] = useState(getBalance(PRO_BALANCE_KEY));
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [totalCards, setTotalCards] = useState(0);
   const [totalTryons, setTotalTryons] = useState(0);
-  const [isDev, setIsDev] = useState(() => localStorage.getItem(IS_DEV_KEY) === "1");
+  const [isDev, setIsDev] = useState(false);
   const [devCodeInput, setDevCodeInput] = useState("");
   const [devLoading, setDevLoading] = useState(false);
   const [devMessage, setDevMessage] = useState<string | null>(null);
 
+  const username = authUser?.username ?? null;
+  const nano2 = authUser?.nano2Balance ?? 0;
+  const pro = authUser?.proBalance ?? 0;
+
   useEffect(() => {
-    const onStorage = () => {
-      setUsername(getUsername());
-      setNano2(getBalance(NANO2_BALANCE_KEY));
-      setPro(getBalance(PRO_BALANCE_KEY));
-      setIsDev(localStorage.getItem(IS_DEV_KEY) === "1");
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    fetch("/api/auth/me")
+      .then((r) => r.ok ? r.json() : null)
+      .then((user: AuthUser | null) => { if (user) setAuthUser(user); })
+      .catch(() => {})
+      .finally(() => setSessionChecked(true));
   }, []);
 
   useEffect(() => {
@@ -72,9 +67,10 @@ export default function Profile() {
       });
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem(USER_KEY);
-    setUsername(null);
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    setAuthUser(null);
+    window.location.href = "/app";
   };
 
   const handleDevCode = async () => {
@@ -89,14 +85,15 @@ export default function Profile() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Неверный код");
-      const curNano2 = getBalance(NANO2_BALANCE_KEY);
-      const curPro = getBalance(PRO_BALANCE_KEY);
-      localStorage.setItem(NANO2_BALANCE_KEY, String(curNano2 + data.nano2));
-      localStorage.setItem(PRO_BALANCE_KEY, String(curPro + data.pro));
-      localStorage.setItem(IS_DEV_KEY, "1");
-      localStorage.setItem(DEV_CODE_KEY, devCodeInput.trim());
-      setNano2(curNano2 + data.nano2);
-      setPro(curPro + data.pro);
+      // Обновляем баланс на сервере
+      const newNano2 = nano2 + data.nano2;
+      const newPro = pro + data.pro;
+      await fetch("/api/auth/balance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nano2Balance: newNano2, proBalance: newPro }),
+      });
+      setAuthUser((prev) => prev ? { ...prev, nano2Balance: newNano2, proBalance: newPro } : prev);
       setIsDev(true);
       setDevCodeInput("");
       setDevMessage(data.message);
@@ -106,6 +103,14 @@ export default function Profile() {
       setDevLoading(false);
     }
   };
+
+  if (!sessionChecked) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      </div>
+    );
+  }
 
   if (!username) {
     return (
