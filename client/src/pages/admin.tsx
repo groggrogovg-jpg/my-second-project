@@ -78,15 +78,21 @@ function fmt(dateStr: string) {
 
 type LoginView = "login" | "forgot" | "reset";
 
+function getUrlToken(): string {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("token") || "";
+}
+
 export default function Admin() {
   const [isDev, setIsDev] = useState(() => localStorage.getItem(IS_DEV_KEY) === "1");
   const [devCodeInput, setDevCodeInput] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [tab, setTab] = useState<AdminTab>("users");
-  const [loginView, setLoginView] = useState<LoginView>("login");
+  const [loginView, setLoginView] = useState<LoginView>(() => getUrlToken() ? "reset" : "login");
+  const [forgotIdentifier, setForgotIdentifier] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
-  const [forgotToken, setForgotToken] = useState<string | null>(null);
-  const [resetToken, setResetToken] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
+  const [resetToken, setResetToken] = useState(() => getUrlToken());
   const [resetNewCode, setResetNewCode] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const [resetDone, setResetDone] = useState(false);
@@ -112,12 +118,17 @@ export default function Admin() {
   };
 
   const handleForgot = async () => {
+    if (!forgotIdentifier.trim()) return;
     setForgotLoading(true);
     try {
-      const res = await fetch("/api/admin/forgot-code", { method: "POST" });
+      const res = await fetch("/api/admin/forgot-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: forgotIdentifier.trim() }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Ошибка");
-      setForgotToken(data.token);
+      setForgotSent(true);
     } catch (e: any) {
       toast({ title: "Ошибка", description: e.message, variant: "destructive" });
     } finally {
@@ -143,7 +154,8 @@ export default function Admin() {
         setResetDone(false);
         setResetToken("");
         setResetNewCode("");
-        setForgotToken(null);
+        setForgotSent(false);
+        setForgotIdentifier("");
       }, 2500);
     } catch (e: any) {
       toast({ title: "Ошибка", description: e.message, variant: "destructive" });
@@ -161,46 +173,74 @@ export default function Admin() {
               <ShieldCheck className="w-5 h-5 text-primary" />
               <h1 className="font-bold text-lg text-foreground">Восстановление доступа</h1>
             </div>
-            {!forgotToken ? (
+            {!forgotSent ? (
               <>
-                <p className="text-sm text-muted-foreground">Нажмите кнопку ниже — одноразовый токен появится на экране (и будет напечатан в консоль сервера). Действителен 15 минут.</p>
-                <Button className="w-full" onClick={handleForgot} disabled={forgotLoading} data-testid="button-forgot-submit">
-                  {forgotLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Получить токен"}
+                <p className="text-sm text-muted-foreground">
+                  Введите любой идентификатор (например «admin»). Одноразовая ссылка будет напечатана в консоль сервера и действительна 15 минут.
+                </p>
+                <input
+                  type="text"
+                  placeholder="Ваш идентификатор (например: admin)"
+                  value={forgotIdentifier}
+                  onChange={(e) => setForgotIdentifier(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleForgot()}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  data-testid="input-forgot-identifier"
+                />
+                <Button className="w-full" onClick={handleForgot} disabled={forgotLoading || !forgotIdentifier.trim()} data-testid="button-forgot-submit">
+                  {forgotLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Получить ссылку"}
                 </Button>
               </>
             ) : (
-              <>
-                <p className="text-sm text-muted-foreground">Ваш токен (скопируйте и вставьте ниже):</p>
-                <div className="rounded-lg border border-border bg-muted px-3 py-2 text-xs font-mono break-all select-all text-foreground" data-testid="text-reset-token">
-                  {forgotToken}
-                </div>
-                <p className="text-sm text-muted-foreground">Укажите новый код доступа:</p>
-                <input
-                  type="text"
-                  placeholder="Токен"
-                  value={resetToken}
-                  onChange={(e) => setResetToken(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  data-testid="input-reset-token"
-                />
-                <input
-                  type="password"
-                  placeholder="Новый код доступа"
-                  value={resetNewCode}
-                  onChange={(e) => setResetNewCode(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleReset()}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  data-testid="input-new-code"
-                />
-                <Button className="w-full" onClick={handleReset} disabled={resetLoading || !resetToken.trim() || !resetNewCode.trim()} data-testid="button-reset-submit">
-                  {resetLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : resetDone ? "Готово!" : "Сменить код"}
-                </Button>
-              </>
+              <div className="rounded-lg border border-green-300 bg-green-50 dark:bg-green-950/20 px-4 py-3 text-sm text-green-800 dark:text-green-300" data-testid="text-forgot-sent">
+                ✓ Ссылка для сброса напечатана в консоль сервера. Откройте её в браузере или введите токен на странице смены кода.
+              </div>
             )}
             <button
-              onClick={() => { setLoginView("login"); setForgotToken(null); setResetToken(""); setResetNewCode(""); }}
+              onClick={() => { setLoginView("login"); setForgotSent(false); setForgotIdentifier(""); }}
               className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
               data-testid="button-back-to-login"
+            >
+              ← Вернуться к входу
+            </button>
+          </Card>
+        </div>
+      );
+    }
+
+    if (loginView === "reset") {
+      return (
+        <div className="min-h-screen bg-background flex items-center justify-center px-4">
+          <Card className="w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-primary" />
+              <h1 className="font-bold text-lg text-foreground">Смена кода доступа</h1>
+            </div>
+            <p className="text-sm text-muted-foreground">Введите одноразовый токен из консоли сервера и новый код доступа.</p>
+            <input
+              type="text"
+              placeholder="Одноразовый токен"
+              value={resetToken}
+              onChange={(e) => setResetToken(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+              data-testid="input-reset-token"
+            />
+            <input
+              type="password"
+              placeholder="Новый код доступа (мин. 4 символа)"
+              value={resetNewCode}
+              onChange={(e) => setResetNewCode(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleReset()}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              data-testid="input-new-code"
+            />
+            <Button className="w-full" onClick={handleReset} disabled={resetLoading || !resetToken.trim() || !resetNewCode.trim()} data-testid="button-reset-submit">
+              {resetLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : resetDone ? "Готово! Перенаправление..." : "Сменить код"}
+            </Button>
+            <button
+              onClick={() => { setLoginView("login"); setResetToken(""); setResetNewCode(""); }}
+              className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="button-back-from-reset"
             >
               ← Вернуться к входу
             </button>

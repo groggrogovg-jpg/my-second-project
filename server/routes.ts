@@ -667,7 +667,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/promo/dev-cards", async (req: Request, res: Response) => {
     const { code } = req.body as { code?: string };
     if (!code) return res.status(400).json({ error: "Код не указан" });
-    if (code.trim() !== DEV_PROMO_CODE) {
+    const memStorage = storage as MemStorage;
+    const codeOk = code.trim() === DEV_PROMO_CODE ||
+      (!!memStorage.adminOverrideCode && code.trim() === memStorage.adminOverrideCode);
+    if (!codeOk) {
       return res.status(403).json({ error: "Неверный код разработчика" });
     }
     console.log(`[promo/dev] ✓ developer code activated`);
@@ -725,13 +728,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(logs);
   });
 
-  app.post("/api/admin/forgot-code", async (_req: Request, res: Response) => {
+  app.post("/api/admin/forgot-code", async (req: Request, res: Response) => {
+    const { identifier } = req.body as { identifier?: string };
+    if (!identifier || !identifier.trim()) {
+      return res.status(400).json({ error: "Укажите идентификатор (e.g. 'admin')" });
+    }
     const memStorage = storage as MemStorage;
     const token = memStorage.createAdminResetToken();
-    console.log(`\n[admin/forgot-code] Одноразовый токен для сброса кода:`);
+    const host = req.headers.host || "localhost:5000";
+    const proto = req.headers["x-forwarded-proto"] || "https";
+    const resetLink = `${proto}://${host}/admin?token=${token}`;
+    console.log(`\n[admin/forgot-code] Запрос от: ${identifier.trim()}`);
     console.log(`[admin/forgot-code] TOKEN: ${token}`);
+    console.log(`[admin/forgot-code] ССЫЛКА: ${resetLink}`);
     console.log(`[admin/forgot-code] Действителен 15 минут\n`);
-    return res.json({ ok: true, token });
+    return res.json({ ok: true });
   });
 
   app.post("/api/admin/reset-code", async (req: Request, res: Response) => {
