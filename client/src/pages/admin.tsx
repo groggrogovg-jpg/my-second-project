@@ -50,6 +50,8 @@ interface ServerUser {
   generationCount: number;
   pendingNano2: number;
   pendingPro: number;
+  nano2Balance: number;
+  proBalance: number;
 }
 
 interface PaymentRecord {
@@ -337,11 +339,15 @@ export default function Admin() {
   );
 }
 
+type BalanceModal = { username: string; model: "nano2" | "pro"; amount: 1 | 3 | 5 };
+type PasswordModal = { username: string; newPassword?: string };
+
 function UsersTab() {
   const [users, setUsers] = useState<ServerUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
-  const [confirmModal, setConfirmModal] = useState<{ username: string; action: "nano2" | "pro" | "reset" } | null>(null);
+  const [balanceModal, setBalanceModal] = useState<Omit<BalanceModal, "amount"> & { amount: number } | null>(null);
+  const [passwordModal, setPasswordModal] = useState<PasswordModal | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const { toast } = useToast();
 
@@ -360,27 +366,40 @@ function UsersTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  const doAction = async () => {
-    if (!confirmModal) return;
+  const doAddBalance = async () => {
+    if (!balanceModal) return;
     setActionLoading(true);
     try {
-      const { username, action } = confirmModal;
-      if (action === "reset") {
-        await fetch(`/api/admin/users/${encodeURIComponent(username)}/reset-balance`, {
-          method: "POST", headers: adminHeaders(),
-        });
-        toast({ title: "Баланс сброшен", description: `Следующий вход ${username} обнулит баланс.` });
-      } else {
-        const body = action === "nano2" ? { nano2Delta: 100 } : { proDelta: 100 };
-        await fetch(`/api/admin/users/${encodeURIComponent(username)}/balance`, {
-          method: "POST", headers: adminHeaders(), body: JSON.stringify(body),
-        });
-        toast({ title: "+100 карточек", description: `Будут зачислены при следующем входе ${username}.` });
-      }
-      setConfirmModal(null);
+      const body = balanceModal.model === "nano2"
+        ? { nano2Delta: balanceModal.amount }
+        : { proDelta: balanceModal.amount };
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(balanceModal.username)}/balance`, {
+        method: "POST", headers: adminHeaders(), body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Ошибка");
+      toast({ title: `+${balanceModal.amount} карточек`, description: `Зачислено для «${balanceModal.username}» при следующем входе.` });
+      setBalanceModal(null);
       await load();
     } catch (e: any) {
       toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const doResetPassword = async () => {
+    if (!passwordModal || passwordModal.newPassword) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(passwordModal.username)}/reset-password`, {
+        method: "POST", headers: adminHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Ошибка");
+      setPasswordModal({ username: passwordModal.username, newPassword: data.newPassword });
+    } catch (e: any) {
+      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+      setPasswordModal(null);
     } finally {
       setActionLoading(false);
     }
@@ -413,9 +432,10 @@ function UsersTab() {
               <thead>
                 <tr className="border-b border-border bg-muted/50">
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Пользователь</th>
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground hidden sm:table-cell">Дата входа</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground hidden sm:table-cell">Регистрация</th>
                   <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Генераций</th>
-                  <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Ожидают</th>
+                  <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Nano2</th>
+                  <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Pro</th>
                   <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Действия</th>
                 </tr>
               </thead>
@@ -426,27 +446,28 @@ function UsersTab() {
                     <td className="px-4 py-2.5 text-muted-foreground hidden sm:table-cell">{fmt(u.registeredAt)}</td>
                     <td className="px-4 py-2.5 text-center text-foreground">{u.generationCount}</td>
                     <td className="px-4 py-2.5 text-center">
-                      {(u.pendingNano2 > 0 || u.pendingPro > 0) ? (
-                        <span className="text-green-600 font-medium">
-                          {u.pendingNano2 > 0 && `N2:+${u.pendingNano2}`}
-                          {u.pendingNano2 > 0 && u.pendingPro > 0 && " "}
-                          {u.pendingPro > 0 && `Pro:+${u.pendingPro}`}
-                        </span>
-                      ) : <span className="text-muted-foreground">—</span>}
+                      <span className={u.nano2Balance > 0 ? "text-green-600 font-semibold" : "text-muted-foreground"}>
+                        {u.nano2Balance}
+                        {u.pendingNano2 > 0 && <span className="text-blue-500 ml-1">(+{u.pendingNano2})</span>}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className={u.proBalance > 0 ? "text-purple-600 font-semibold" : "text-muted-foreground"}>
+                        {u.proBalance}
+                        {u.pendingPro > 0 && <span className="text-blue-500 ml-1">(+{u.pendingPro})</span>}
+                      </span>
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex gap-1 justify-end flex-wrap">
                         <Button size="sm" variant="outline" className="h-6 text-[10px] px-2"
-                          onClick={() => setConfirmModal({ username: u.username, action: "nano2" })}>
-                          +100 Nano2
+                          data-testid={`button-topup-${u.username}`}
+                          onClick={() => setBalanceModal({ username: u.username, model: "nano2", amount: 1 })}>
+                          Пополнить
                         </Button>
-                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2"
-                          onClick={() => setConfirmModal({ username: u.username, action: "pro" })}>
-                          +100 Pro
-                        </Button>
-                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 text-destructive border-destructive/40 hover:bg-destructive/10"
-                          onClick={() => setConfirmModal({ username: u.username, action: "reset" })}>
-                          Сброс
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 text-orange-600 border-orange-400/40 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+                          data-testid={`button-reset-pwd-${u.username}`}
+                          onClick={() => setPasswordModal({ username: u.username })}>
+                          Сброс пароля
                         </Button>
                       </div>
                     </td>
@@ -459,24 +480,92 @@ function UsersTab() {
         </Card>
       )}
 
-      {confirmModal && (
+      {/* Модаль пополнения баланса */}
+      {balanceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-sm p-5 space-y-4">
-            <h3 className="font-semibold text-foreground">Подтверждение</h3>
-            <p className="text-sm text-muted-foreground">
-              {confirmModal.action === "reset"
-                ? `Сбросить баланс пользователя «${confirmModal.username}»?`
-                : `Пополнить ${confirmModal.action === "nano2" ? "Nano2" : "Pro"} на +100 для «${confirmModal.username}»?`}
-            </p>
-            <p className="text-xs text-muted-foreground">Изменение вступит в силу при следующем входе пользователя в приложение.</p>
+          <Card className="w-full max-w-sm p-5 space-y-4" data-testid="modal-topup">
+            <h3 className="font-semibold text-foreground">Пополнить баланс</h3>
+            <p className="text-sm text-muted-foreground">Пользователь: <strong>{balanceModal.username}</strong></p>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground font-medium">Модель</p>
+              <div className="flex gap-2">
+                {(["nano2", "pro"] as const).map((m) => (
+                  <button key={m}
+                    onClick={() => setBalanceModal((prev) => prev ? { ...prev, model: m } : prev)}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                      balanceModal.model === m
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                    }`}
+                    data-testid={`button-model-${m}`}>
+                    {m === "nano2" ? "Nano2" : "Pro"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground font-medium">Количество карточек</p>
+              <div className="flex gap-2">
+                {([1, 3, 5] as const).map((n) => (
+                  <button key={n}
+                    onClick={() => setBalanceModal((prev) => prev ? { ...prev, amount: n } : prev)}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                      balanceModal.amount === n
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                    }`}
+                    data-testid={`button-amount-${n}`}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Баланс будет зачислен при следующем входе пользователя.</p>
             <div className="flex gap-2">
-              <Button className="flex-1" onClick={doAction} disabled={actionLoading}>
-                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Подтвердить"}
+              <Button className="flex-1" onClick={doAddBalance} disabled={actionLoading} data-testid="button-topup-confirm">
+                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : `+${balanceModal.amount} ${balanceModal.model === "nano2" ? "Nano2" : "Pro"}`}
               </Button>
-              <Button variant="outline" className="flex-1" onClick={() => setConfirmModal(null)} disabled={actionLoading}>
+              <Button variant="outline" className="flex-1" onClick={() => setBalanceModal(null)} disabled={actionLoading}>
                 Отмена
               </Button>
             </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Модаль сброса пароля */}
+      {passwordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-sm p-5 space-y-4" data-testid="modal-reset-password">
+            <h3 className="font-semibold text-foreground">Сброс пароля</h3>
+            {passwordModal.newPassword ? (
+              <>
+                <p className="text-sm text-muted-foreground">Новый пароль для <strong>{passwordModal.username}</strong>:</p>
+                <div className="rounded-lg border border-green-300 bg-green-50 dark:bg-green-950/20 px-4 py-3 text-center">
+                  <span className="font-mono text-lg font-bold text-green-800 dark:text-green-300 tracking-widest" data-testid="text-new-password">
+                    {passwordModal.newPassword}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">Передайте пользователю этот пароль. Он уже активен. Логируется в консоль сервера.</p>
+                <Button className="w-full" onClick={() => setPasswordModal(null)} data-testid="button-close-password-modal">
+                  Закрыть
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Сгенерировать новый случайный пароль для пользователя <strong>{passwordModal.username}</strong>? Текущий пароль станет недействительным.
+                </p>
+                <div className="flex gap-2">
+                  <Button className="flex-1" onClick={doResetPassword} disabled={actionLoading} data-testid="button-confirm-reset-password">
+                    {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Сгенерировать"}
+                  </Button>
+                  <Button variant="outline" className="flex-1" onClick={() => setPasswordModal(null)} disabled={actionLoading}>
+                    Отмена
+                  </Button>
+                </div>
+              </>
+            )}
           </Card>
         </div>
       )}

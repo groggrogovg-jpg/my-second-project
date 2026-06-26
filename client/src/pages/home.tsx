@@ -219,9 +219,24 @@ export default function Home() {
     }
   }, [generations, activeGenerationId]);
 
+  const deductedIds = useRef<Set<string>>(new Set());
+  const initializedFromHistory = useRef(false);
+
+  useEffect(() => {
+    if (initializedFromHistory.current || generations.length === 0) return;
+    initializedFromHistory.current = true;
+    for (const g of generations) {
+      if (g.status === "done" || g.status === "error") {
+        deductedIds.current.add(g.id);
+      }
+    }
+  }, [generations]);
+
   useEffect(() => {
     if (!polledGeneration) return;
     if (polledGeneration.status === "done") {
+      if (deductedIds.current.has(polledGeneration.id)) return;
+      deductedIds.current.add(polledGeneration.id);
       if (isAuth) {
         const genType = (polledGeneration as any).generationType || "card";
         if (genType === "tryon") {
@@ -244,7 +259,7 @@ export default function Home() {
         variant: "destructive",
       });
     }
-  }, [polledGeneration?.status]);
+  }, [polledGeneration?.status, polledGeneration?.id]);
 
   const currentModel = MODELS.find((m) => m.id === selectedModel)!;
   const videoStars = VIDEO_STAR_COSTS[videoDuration];

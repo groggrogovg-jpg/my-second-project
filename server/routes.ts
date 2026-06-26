@@ -726,6 +726,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ ok: true });
   });
 
+  app.post("/api/admin/users/:username/reset-password", adminOnly, async (req: Request, res: Response) => {
+    const { username } = req.params;
+    const chars = "abcdefghijkmnpqrstuvwxyz23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+    const newPassword = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+    const bcrypt = await import("bcrypt");
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const ok = await storage.resetUserPassword(username, passwordHash);
+    if (!ok) return res.status(404).json({ error: "Пользователь не найден" });
+    console.log(`[admin] ✓ password reset for ${username}: ${newPassword}`);
+    return res.json({ ok: true, newPassword });
+  });
+
   app.get("/api/admin/payments", adminOnly, async (_req: Request, res: Response) => {
     const payments = await storage.listPayments();
     return res.json(payments);

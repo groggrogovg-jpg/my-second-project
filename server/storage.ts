@@ -28,6 +28,8 @@ export interface ServerUser {
   generationCount: number;
   pendingNano2: number;
   pendingPro: number;
+  nano2Balance: number;
+  proBalance: number;
 }
 
 export interface ErrorLog {
@@ -65,6 +67,7 @@ export interface IStorage {
   getAppUserById(id: string): Promise<AppUser | undefined>;
   getAppUserByUsername(username: string): Promise<AppUser | undefined>;
   updateAppUserBalances(id: string, nano2: number, pro: number): Promise<void>;
+  resetUserPassword(username: string, passwordHash: string): Promise<boolean>;
   incrementAppUserTrial(id: string): Promise<void>;
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -171,6 +174,17 @@ export class MemStorage implements IStorage {
       user.nano2Balance = Math.max(0, nano2);
       user.proBalance = Math.max(0, pro);
     }
+  }
+
+  async resetUserPassword(username: string, passwordHash: string): Promise<boolean> {
+    const user = Array.from(this.appUsers.values()).find(
+      (u) => u.username.toLowerCase() === username.toLowerCase()
+    );
+    if (!user) return false;
+    user.passwordHash = passwordHash;
+    user.password = passwordHash;
+    this.appUsers.set(user.id, user);
+    return true;
   }
 
   async incrementAppUserTrial(id: string): Promise<void> {
@@ -281,6 +295,8 @@ export class MemStorage implements IStorage {
       generationCount: 0,
       pendingNano2: 0,
       pendingPro: 0,
+      nano2Balance: 0,
+      proBalance: 0,
     };
     this.serverUsers.set(username, user);
     return user;
@@ -291,9 +307,19 @@ export class MemStorage implements IStorage {
   }
 
   async getAllServerUsers(): Promise<ServerUser[]> {
-    return Array.from(this.serverUsers.values()).sort(
+    const list = Array.from(this.serverUsers.values()).sort(
       (a, b) => b.registeredAt.getTime() - a.registeredAt.getTime()
     );
+    return list.map((su) => {
+      const appUser = Array.from(this.appUsers.values()).find(
+        (u) => u.username.toLowerCase() === su.username.toLowerCase()
+      );
+      return {
+        ...su,
+        nano2Balance: appUser?.nano2Balance ?? 0,
+        proBalance: appUser?.proBalance ?? 0,
+      };
+    });
   }
 
   async incrementUserGenerations(username: string): Promise<void> {
@@ -308,6 +334,8 @@ export class MemStorage implements IStorage {
         generationCount: 1,
         pendingNano2: 0,
         pendingPro: 0,
+        nano2Balance: 0,
+        proBalance: 0,
       });
     }
   }
@@ -315,7 +343,7 @@ export class MemStorage implements IStorage {
   async addPendingCredits(username: string, nano2: number, pro: number): Promise<void> {
     let user = this.serverUsers.get(username);
     if (!user) {
-      user = { username, registeredAt: new Date(), generationCount: 0, pendingNano2: 0, pendingPro: 0 };
+      user = { username, registeredAt: new Date(), generationCount: 0, pendingNano2: 0, pendingPro: 0, nano2Balance: 0, proBalance: 0 };
       this.serverUsers.set(username, user);
     }
     user.pendingNano2 += nano2;
