@@ -6,6 +6,7 @@ export interface AppUser extends User {
   passwordHash: string;
   nano2Balance: number;
   proBalance: number;
+  starsBalance: number;
   trialCount: number;
   isDeveloper: boolean;
   createdAt: Date;
@@ -31,6 +32,7 @@ export interface ServerUser {
   pendingPro: number;
   nano2Balance: number;
   proBalance: number;
+  starsBalance: number;
   isDeveloper: boolean;
 }
 
@@ -69,6 +71,7 @@ export interface IStorage {
   getAppUserById(id: string): Promise<AppUser | undefined>;
   getAppUserByUsername(username: string): Promise<AppUser | undefined>;
   updateAppUserBalances(id: string, nano2: number, pro: number): Promise<void>;
+  updateStarsBalance(id: string, delta: number): Promise<void>;
   resetUserPassword(username: string, passwordHash: string): Promise<boolean>;
   incrementAppUserTrial(id: string): Promise<void>;
   getUser(id: string): Promise<User | undefined>;
@@ -159,7 +162,7 @@ export class MemStorage implements IStorage {
 
   async createAppUser(username: string, passwordHash: string): Promise<AppUser> {
     const id = randomUUID();
-    const user: AppUser = { id, username, password: passwordHash, passwordHash, nano2Balance: 0, proBalance: 0, trialCount: 0, isDeveloper: false, createdAt: new Date() };
+    const user: AppUser = { id, username, password: passwordHash, passwordHash, nano2Balance: 0, proBalance: 0, starsBalance: 0, trialCount: 0, isDeveloper: false, createdAt: new Date() };
     this.appUsers.set(id, user);
     return user;
   }
@@ -177,6 +180,13 @@ export class MemStorage implements IStorage {
     if (user) {
       user.nano2Balance = Math.max(0, nano2);
       user.proBalance = Math.max(0, pro);
+    }
+  }
+
+  async updateStarsBalance(id: string, delta: number): Promise<void> {
+    const user = this.appUsers.get(id);
+    if (user) {
+      user.starsBalance = Math.max(0, user.starsBalance + delta);
     }
   }
 
@@ -340,6 +350,8 @@ export class MemStorage implements IStorage {
       pendingPro: 0,
       nano2Balance: 0,
       proBalance: 0,
+      starsBalance: 0,
+      isDeveloper: false,
     };
     this.serverUsers.set(username, user);
     return user;
@@ -361,6 +373,7 @@ export class MemStorage implements IStorage {
         ...su,
         nano2Balance: appUser?.nano2Balance ?? 0,
         proBalance: appUser?.proBalance ?? 0,
+        starsBalance: appUser?.starsBalance ?? 0,
         isDeveloper: appUser?.isDeveloper ?? false,
       };
     });
@@ -380,6 +393,8 @@ export class MemStorage implements IStorage {
         pendingPro: 0,
         nano2Balance: 0,
         proBalance: 0,
+        starsBalance: 0,
+        isDeveloper: false,
       });
     }
   }
@@ -387,7 +402,7 @@ export class MemStorage implements IStorage {
   async addPendingCredits(username: string, nano2: number, pro: number): Promise<void> {
     let user = this.serverUsers.get(username);
     if (!user) {
-      user = { username, registeredAt: new Date(), generationCount: 0, pendingNano2: 0, pendingPro: 0, nano2Balance: 0, proBalance: 0 };
+      user = { username, registeredAt: new Date(), generationCount: 0, pendingNano2: 0, pendingPro: 0, nano2Balance: 0, proBalance: 0, starsBalance: 0, isDeveloper: false };
       this.serverUsers.set(username, user);
     }
     user.pendingNano2 += nano2;

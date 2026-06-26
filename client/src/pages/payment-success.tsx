@@ -64,6 +64,11 @@ export default function PaymentSuccess() {
       setCardsAdded(cards);
       setModel(mdl);
       setCurrentBalance(newBal);
+      // Начисляем равное количество звёзд
+      const starsCurrent = getBalance(STARS_KEY);
+      const starsNew = starsCurrent + cards;
+      localStorage.setItem(STARS_KEY, String(starsNew));
+      setStarsAdded(cards);
       // Синхронизируем баланс с сервером (если пользователь авторизован)
       try {
         const meRes = await fetch("/api/auth/me");
@@ -71,10 +76,11 @@ export default function PaymentSuccess() {
           const me = await meRes.json();
           const newNano2 = mdl === "nano2" ? me.nano2Balance + cards : me.nano2Balance;
           const newPro = mdl === "pro" ? me.proBalance + cards : me.proBalance;
+          const newStars = (me.starsBalance ?? 0) + cards;
           await fetch("/api/auth/balance", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nano2Balance: newNano2, proBalance: newPro }),
+            body: JSON.stringify({ nano2Balance: newNano2, proBalance: newPro, starsBalance: newStars }),
           });
         }
       } catch { /* игнорируем если не авторизован */ }

@@ -729,12 +729,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/admin/users/:username/balance", adminOnly, async (req: Request, res: Response) => {
     const { username } = req.params;
-    const { nano2Delta, proDelta } = req.body as { nano2Delta?: number; proDelta?: number };
-    if (nano2Delta === undefined && proDelta === undefined) {
-      return res.status(400).json({ error: "nano2Delta или proDelta обязательны" });
+    const { nano2Delta, proDelta, starsDelta } = req.body as { nano2Delta?: number; proDelta?: number; starsDelta?: number };
+    if (nano2Delta === undefined && proDelta === undefined && starsDelta === undefined) {
+      return res.status(400).json({ error: "nano2Delta, proDelta или starsDelta обязательны" });
     }
     await storage.addPendingCredits(username, nano2Delta || 0, proDelta || 0);
-    console.log(`[admin] ✓ pending credits added for ${username}: nano2=${nano2Delta || 0} pro=${proDelta || 0}`);
+    const appUser = await storage.getAppUserByUsername(username);
+    if (appUser && starsDelta !== undefined && starsDelta !== 0) {
+      await storage.updateStarsBalance(appUser.id, starsDelta);
+    }
+    console.log(`[admin] ✓ pending credits added for ${username}: nano2=${nano2Delta || 0} pro=${proDelta || 0} stars=${starsDelta || 0}`);
     return res.json({ ok: true });
   });
 
@@ -1242,6 +1246,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const validModelId = modelId === "nano-banana-2" || modelId === "nano-banana-pro" ? modelId : "nano-banana-pro";
       console.log(`[edit-background] ▶ START model=${validModelId} prompt="${prompt.substring(0, 60)}..."`);
 
+      // Проверяем звёзды для авторизованных пользователей
+      const userId = req.session?.userId;
+      const cost = 1; // 1 звезда за смену фона
+      if (userId) {
+        const user = await storage.getAppUserById(userId);
+        if (!user) return res.status(401).json({ error: "Пользователь не найден" });
+        if (user.starsBalance < cost) {
+          return res.status(403).json({ error: "Недостаточно звёзд. Пополните баланс, купив пакет карточек." });
+        }
+        await storage.updateStarsBalance(userId, -cost);
+      } else {
+        return res.status(401).json({ error: "Смена фона доступна только авторизованным пользователям" });
+      }
+
       if (!isTrustedImageUrl(imageUrl)) {
         return res.status(400).json({ error: "Недопустимый URL изображения" });
       }
@@ -1305,7 +1323,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.trackUser(trimmed);
       req.session.userId = user.id;
       req.session.username = user.username;
-      res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, trialCount: user.trialCount });
+      res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, starsBalance: user.starsBalance, trialCount: user.trialCount });
     } catch (err: any) {
       console.error("[auth/register] error:", err);
       res.status(500).json({ error: "Ошибка регистрации" });
@@ -1339,7 +1357,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       req.session.userId = user.id;
       req.session.username = user.username;
-      res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, trialCount: user.trialCount, transferredCount });
+      res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, starsBalance: user.starsBalance, trialCount: user.trialCount, transferredCount });
     } catch (err: any) {
       console.error("[auth/login] error:", err);
       res.status(500).json({ error: "Ошибка входа" });
@@ -1356,14 +1374,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!userId) return res.status(401).json({ error: "Не авторизован" });
     const user = await storage.getAppUserById(userId);
     if (!user) return res.status(401).json({ error: "Пользователь не найден" });
-    res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, trialCount: user.trialCount });
+    res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, starsBalance: user.starsBalance, trialCount: user.trialCount });
   });
 
   app.post("/api/auth/balance", async (req: Request, res: Response) => {
     const userId = req.session?.userId;
     if (!userId) return res.status(401).json({ error: "Не авторизован" });
-    const { nano2Balance, proBalance } = req.body as { nano2Balance: number; proBalance: number };
+    const { nano2Balance, proBalance, starsBalance } = req.body as { nano2Balance: number; proBalance: number; starsBalance?: number };
     await storage.updateAppUserBalances(userId, nano2Balance, proBalance);
+    if (starsBalance !== undefined) {
+      const user = await storage.getAppUserById(userId);
+      if (user) {
+        const delta = starsBalance - user.starsBalance;
+        if (delta !== 0) await storage.updateStarsBalance(userId, delta);
+      }
+    }
     res.json({ ok: true });
   });
 

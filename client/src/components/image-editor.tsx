@@ -4,7 +4,7 @@ import Konva from "konva";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { X, Download, Type, Trash2, ChevronDown, ChevronUp, Check, Minus, Plus, Sparkles, Loader2, Image as ImageIcon, Star } from "lucide-react";
-import { MODELS, BG_EDIT_STAR_COSTS, type ModelId } from "@shared/schema";
+import { MODELS, BG_EDIT_STAR_COST, type ModelId } from "@shared/schema";
 
 interface EditorElement {
   id: string;
@@ -261,7 +261,7 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
 
   const handleEditBackground = async () => {
     if (!bgPrompt.trim()) return;
-    const cost = BG_EDIT_STAR_COSTS[bgModel];
+    const cost = BG_EDIT_STAR_COST;
     if (stars < cost) {
       alert(`Недостаточно звёзд. Нужно ${cost} ⭐ для изменения фона.`);
       return;
@@ -307,7 +307,7 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => setBgEditorOpen(true)} disabled={bgGenerating}>
             <ImageIcon className="w-3.5 h-3.5 mr-1.5" />
-            {bgGenerating ? "Генерация..." : `Изменить фон ${BG_EDIT_STAR_COSTS[bgModel]} ⭐`}
+            {bgGenerating ? "Генерация..." : `Изменить фон ${BG_EDIT_STAR_COST} ⭐`}
           </Button>
           <Button size="sm" onClick={handleExport} disabled={saving}>
             <Download className="w-3.5 h-3.5 mr-1.5" />
@@ -614,7 +614,7 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
             <div className="flex gap-1.5">
               {MODELS.map((m) => {
                 const isSelected = bgModel === m.id;
-                const canAfford = stars >= BG_EDIT_STAR_COSTS[m.id];
+                const canAfford = stars >= BG_EDIT_STAR_COST;
                 return (
                   <button
                     key={m.id}
@@ -625,7 +625,7 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
                     } ${!canAfford ? "opacity-60" : ""}`}
                   >
                     <span className="font-semibold text-foreground leading-tight text-center mb-0.5">{m.name}</span>
-                    <span className="text-amber-500 font-medium">{BG_EDIT_STAR_COSTS[m.id]} ⭐</span>
+                    <span className="text-amber-500 font-medium">{BG_EDIT_STAR_COST} ⭐</span>
                   </button>
                 );
               })}
@@ -651,7 +651,7 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
               {bgGenerating ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Генерация...</>
               ) : (
-                <><Sparkles className="w-4 h-4 mr-2" />{BG_EDIT_STAR_COSTS[bgModel]} ⭐</>
+                <><Sparkles className="w-4 h-4 mr-2" />{BG_EDIT_STAR_COST} ⭐</>
               )}
             </Button>
           </div>

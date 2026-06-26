@@ -55,6 +55,7 @@ interface AuthUser {
   username: string;
   nano2Balance: number;
   proBalance: number;
+  starsBalance: number;
   trialCount: number;
 }
 
@@ -86,6 +87,7 @@ export default function Home() {
   const username = authUser?.username ?? null;
   const nano2Balance = authUser?.nano2Balance ?? 0;
   const proBalance = authUser?.proBalance ?? 0;
+  const starsBalance = authUser?.starsBalance ?? 0;
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
@@ -140,7 +142,7 @@ export default function Home() {
     fetch("/api/auth/balance", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nano2Balance: newNano2, proBalance: newPro }),
+      body: JSON.stringify({ nano2Balance: newNano2, proBalance: newPro, starsBalance: authUser?.starsBalance ?? 0 }),
     }).catch(() => {});
   };
 

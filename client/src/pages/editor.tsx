@@ -121,6 +121,18 @@ export default function Editor() {
     },
   });
 
+  const [isAuth, setIsAuth] = useState(false);
+  const [hasBalance, setHasBalance] = useState(false);
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then(r => r.ok ? r.json() : null)
+      .then((user: any) => {
+        setIsAuth(!!user);
+        setHasBalance(!!user && (user.nano2Balance > 0 || user.proBalance > 0));
+      })
+      .catch(() => {});
+  }, []);
+
   const analysis = generation?.gptAnalysis as GptAnalysis | null;
 
   const [elements, setElements] = useState<CanvasElement[]>([]);
@@ -363,7 +375,13 @@ export default function Editor() {
                 Удалить
               </Button>
             )}
-            <Button size="sm" onClick={handleDownload} data-testid="button-download">
+            <Button
+              size="sm"
+              onClick={handleDownload}
+              disabled={!isAuth || !hasBalance}
+              data-testid="button-download"
+              title={!isAuth ? "Скачивание доступно только после авторизации" : !hasBalance ? "Скачивание доступно только после покупки пакета карточек" : undefined}
+            >
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Скачать
             </Button>

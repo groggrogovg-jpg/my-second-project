@@ -156,10 +156,7 @@ export const INITIAL_STARS = 10;
 export const VIDEO_STAR_COSTS: Record<5 | 10, number> = { 5: 5, 10: 10 };
 export const TRYON_STAR_COST = 5;
 
-export const BG_EDIT_STAR_COSTS: Record<ModelId, number> = {
-  "nano-banana-2": 5,
-  "nano-banana-pro": 5,
-};
+export const BG_EDIT_STAR_COST = 1;
 
 export const TEST_MODE = false;
 export const TEST_PRICE_FACTOR = 0.01;
