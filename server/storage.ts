@@ -74,10 +74,12 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  createGeneration(gen: Omit<InsertGeneration, "id">): Promise<Generation>;
+  createGeneration(gen: Omit<InsertGeneration, "id" | "createdAt">): Promise<Generation>;
   getGeneration(id: string): Promise<Generation | undefined>;
   updateGeneration(id: string, updates: Partial<Generation>): Promise<Generation | undefined>;
-  listGenerations(): Promise<Generation[]>;
+  listGenerations(filter: { userId?: string; sessionId?: string }): Promise<Generation[]>;
+  transferSessionGenerations(sessionId: string, userId: string): Promise<number>;
+  deleteExpiredGenerations(): Promise<number>;
   recordPayment(payment: Omit<PaymentRecord, "confirmed" | "createdAt">): Promise<PaymentRecord>;
   updatePaymentOperationId(label: string, operationId: string): Promise<PaymentRecord | undefined>;
   getPaymentByLabel(label: string): Promise<PaymentRecord | undefined>;
@@ -209,10 +211,12 @@ export class MemStorage implements IStorage {
     return user;
   }
 
-  async createGeneration(gen: Omit<InsertGeneration, "id">): Promise<Generation> {
+  async createGeneration(gen: Omit<InsertGeneration, "id" | "createdAt">): Promise<Generation> {
     const id = randomUUID();
     const generation: Generation = {
       id,
+      userId: gen.userId ?? null,
+      sessionId: gen.sessionId ?? null,
       originalImageUrl: gen.originalImageUrl,
       gptAnalysis: gen.gptAnalysis ?? null,
       kieTaskId: gen.kieTaskId ?? null,
@@ -225,6 +229,7 @@ export class MemStorage implements IStorage {
       aspectRatio: gen.aspectRatio ?? "1:1",
       notes: gen.notes ?? null,
       generationType: (gen as any).generationType ?? "card",
+      expiresAt: gen.expiresAt ?? null,
       createdAt: new Date(),
     };
     this.generations.set(id, generation);
@@ -243,10 +248,46 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
-  async listGenerations(): Promise<Generation[]> {
-    return Array.from(this.generations.values()).sort(
+  async listGenerations(filter: { userId?: string; sessionId?: string }): Promise<Generation[]> {
+    const now = new Date();
+    let values = Array.from(this.generations.values()).filter((g) => {
+      // Исключаем просроченные
+      if (g.expiresAt && new Date(g.expiresAt) < now) return false;
+      return true;
+    });
+    if (filter.userId) {
+      values = values.filter((g) => g.userId === filter.userId);
+    } else if (filter.sessionId) {
+      values = values.filter((g) => g.sessionId === filter.sessionId);
+    }
+    return values.sort(
       (a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
     );
+  }
+
+  async transferSessionGenerations(sessionId: string, userId: string): Promise<number> {
+    let count = 0;
+    for (const [id, gen] of this.generations.entries()) {
+      if (gen.sessionId === sessionId) {
+        gen.userId = userId;
+        gen.sessionId = null;
+        this.generations.set(id, gen);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  async deleteExpiredGenerations(): Promise<number> {
+    const now = new Date();
+    let count = 0;
+    for (const [id, gen] of this.generations.entries()) {
+      if (gen.expiresAt && new Date(gen.expiresAt) < now) {
+        this.generations.delete(id);
+        count++;
+      }
+    }
+    return count;
   }
 
   async recordPayment(payment: Omit<PaymentRecord, "confirmed" | "createdAt">): Promise<PaymentRecord> {

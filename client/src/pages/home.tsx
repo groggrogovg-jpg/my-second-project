@@ -33,12 +33,21 @@ const GARMENT_CATEGORIES: { id: GarmentCategory; label: string; examples: string
 ];
 
 const TRIAL_COUNT_KEY = "kardo_trial_count";
+const SESSION_ID_KEY = "kardo_session_id";
 
 function getLocalTrialCount(): number {
   return parseInt(localStorage.getItem(TRIAL_COUNT_KEY) || "0", 10);
 }
 function setLocalTrialCount(n: number) {
   localStorage.setItem(TRIAL_COUNT_KEY, String(Math.max(0, n)));
+}
+function getOrCreateSessionId(): string {
+  let sid = localStorage.getItem(SESSION_ID_KEY);
+  if (!sid) {
+    sid = crypto.randomUUID();
+    localStorage.setItem(SESSION_ID_KEY, sid);
+  }
+  return sid;
 }
 
 interface AuthUser {
@@ -85,6 +94,7 @@ export default function Home() {
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [isTrialGeneration, setIsTrialGeneration] = useState(false);
+  const [warningModalOpen, setWarningModalOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState<ContentTab>("card");
   const [selectedFormat, setSelectedFormat] = useState<FormatId>("1:1");
@@ -148,10 +158,14 @@ export default function Home() {
     setAuthLoading(true);
     try {
       const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
+      const body: any = { username: name, password: authPassword };
+      if (authMode === "login") {
+        body.sessionId = getOrCreateSessionId();
+      }
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: name, password: authPassword }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -163,6 +177,12 @@ export default function Home() {
       setAuthUsername("");
       setAuthPassword("");
       setAuthError("");
+      // При входе показываем предупреждение о 2-дневном сроке хранения
+      if (authMode === "login" && data.transferredCount !== undefined) {
+        setWarningModalOpen(true);
+        // Очищаем sessionId, так как карточки перенесены в аккаунт
+        localStorage.removeItem(SESSION_ID_KEY);
+      }
       toast({ title: authMode === "login" ? `Добро пожаловать, ${data.username}!` : `Аккаунт создан, ${data.username}!` });
     } catch {
       setAuthError("Ошибка соединения");
@@ -178,7 +198,13 @@ export default function Home() {
   };
 
   const { data: generations = [] } = useQuery<Generation[]>({
-    queryKey: ["/api/generations"],
+    queryKey: ["/api/generations", isAuth ? null : getOrCreateSessionId()],
+    queryFn: async () => {
+      const url = isAuth ? "/api/generations" : `/api/generations?sessionId=${getOrCreateSessionId()}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Ошибка загрузки");
+      return res.json();
+    },
     refetchInterval: 5000,
   });
 
@@ -275,6 +301,7 @@ export default function Home() {
       if (notes.trim()) formData.append("notes", notes.trim());
       if (noText) formData.append("noText", "true");
       if (authUser?.username) formData.append("username", authUser.username);
+      if (!authUser) formData.append("sessionId", getOrCreateSessionId());
       const response = await fetch("/api/generate", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -302,6 +329,7 @@ export default function Home() {
       formData.append("duration", String(duration));
       if (prompt.trim()) formData.append("prompt", prompt.trim());
       if (authUser?.username) formData.append("username", authUser.username);
+      if (!authUser) formData.append("sessionId", getOrCreateSessionId());
       const response = await fetch("/api/generate-video", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -327,6 +355,7 @@ export default function Home() {
       formData.append("person", personFile);
       garmentFiles.forEach((f) => formData.append("garment", f));
       if (authUser?.username) formData.append("username", authUser.username);
+      if (!authUser) formData.append("sessionId", getOrCreateSessionId());
       const response = await fetch("/api/generate-tryon", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -411,6 +440,7 @@ export default function Home() {
       formData.append("image", file);
       formData.append("duration", "5");
       formData.append("prompt", "Smooth product showcase, slow graceful movement, cinematic quality");
+      if (!authUser) formData.append("sessionId", getOrCreateSessionId());
       const response = await fetch("/api/generate-video", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -520,6 +550,28 @@ export default function Home() {
             <p className="text-xs text-muted-foreground text-center">
               Пробный режим: 3 карточки с водяным знаком бесплатно
             </p>
+          </Card>
+        </div>
+      )}
+
+      {warningModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center gap-2 text-amber-600">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M12 3a9 9 0 100 18 9 9 0 000-18z" />
+              </svg>
+              <h2 className="font-bold text-sm">Важное уведомление</h2>
+            </div>
+            <p className="text-sm text-foreground leading-relaxed">
+              Ваши карточки будут храниться <strong className="text-amber-600">2 дня</strong>. По истечении этого срока они будут автоматически удалены.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Сохраните их локально, если планируете использовать позже.
+            </p>
+            <Button className="w-full" onClick={() => setWarningModalOpen(false)} data-testid="button-warning-close">
+              Я понял
+            </Button>
           </Card>
         </div>
       )}

@@ -10,6 +10,8 @@ export const users = pgTable("users", {
 
 export const generations = pgTable("generations", {
   id: varchar("id").primaryKey(),
+  userId: varchar("user_id"),
+  sessionId: varchar("session_id"),
   originalImageUrl: text("original_image_url").notNull(),
   gptAnalysis: jsonb("gpt_analysis"),
   kieTaskId: text("kie_task_id"),
@@ -22,6 +24,7 @@ export const generations = pgTable("generations", {
   aspectRatio: text("aspect_ratio").default("1:1"),
   notes: text("notes"),
   generationType: text("generation_type").default("card"),
+  expiresAt: timestamp("expires_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

@@ -463,17 +463,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const notes = (req.body?.notes as string) || "";
       const noText = req.body?.noText === "true";
       const username = (req.body?.username as string) || "";
+      const sessionId = (req.body?.sessionId as string) || "";
+      const userId = req.session?.userId || "";
       if (username) storage.trackUser(username).catch(() => {});
       const resolution = model === "nano-banana-2" ? "1K" : "2K";
 
-      console.log(`[generate] ▶ START file=${filename} size=${imageBuffer.length}b model=${model} ratio=${aspectRatio} noText=${noText} notes="${notes.substring(0, 50)}${notes.length > 50 ? "..." : ""}"`);
+      console.log(`[generate] ▶ START file=${filename} size=${imageBuffer.length}b model=${model} ratio=${aspectRatio} noText=${noText} notes="${notes.substring(0, 50)}${notes.length > 50 ? "..." : ""}" userId=${userId ? "yes" : "no"} sessionId=${sessionId ? "yes" : "no"}`);
 
       const generation = await storage.createGeneration({
+        userId: userId || null,
+        sessionId: sessionId || null,
         originalImageUrl: imageDataUrl,
         status: "analyzing",
         model,
         aspectRatio,
         notes: notes || null,
+        expiresAt: userId ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) : null,
       });
 
       console.log(`[generate] ✓ Generation record created id=${generation.id}`);
@@ -524,16 +529,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const filename = req.file.originalname || "product.jpg";
       const duration = parseInt(req.body?.duration as string) || 5;
       const prompt = (req.body?.prompt as string) || "";
+      const sessionId = (req.body?.sessionId as string) || "";
+      const userId = req.session?.userId || "";
 
       console.log(`[generate-video] ▶ START file=${filename} duration=${duration}s`);
 
       const generation = await storage.createGeneration({
+        userId: userId || null,
+        sessionId: sessionId || null,
         originalImageUrl: `data:${req.file.mimetype};base64,${imageBuffer.toString("base64")}`,
         status: "generating",
         model: "nano-banana-2",
         aspectRatio: "9:16",
         generationType: "video",
-      } as any);
+        expiresAt: userId ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) : null,
+      });
 
       res.json({ id: generation.id, status: "generating" });
 
@@ -570,15 +580,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ error: "Нужны фото модели и хотя бы 1 элемент одежды" });
       }
 
+      const sessionId = (req.body?.sessionId as string) || "";
+      const userId = req.session?.userId || "";
+
       console.log(`[generate-tryon] ▶ START person=${personFile.originalname} garments=${garmentFiles.length}`);
 
       const generation = await storage.createGeneration({
+        userId: userId || null,
+        sessionId: sessionId || null,
         originalImageUrl: `data:${personFile.mimetype};base64,${personFile.buffer.toString("base64")}`,
         status: "generating",
         model: "nano-banana-2",
         aspectRatio: "9:16",
         generationType: "tryon",
-      } as any);
+        expiresAt: userId ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) : null,
+      });
 
       res.json({ id: generation.id, status: "generating" });
 
@@ -637,9 +653,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.get("/api/generations", async (_req: Request, res: Response) => {
+  app.get("/api/generations", async (req: Request, res: Response) => {
     try {
-      const gens = await storage.listGenerations();
+      const userId = req.session?.userId as string | undefined;
+      const sessionId = req.query.sessionId as string | undefined;
+      const filter: { userId?: string; sessionId?: string } = userId ? { userId } : sessionId ? { sessionId } : {};
+      const gens = await storage.listGenerations(filter);
       res.json(gens);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1295,7 +1314,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/auth/login", async (req: Request, res: Response) => {
     try {
-      const { username, password } = req.body as { username: string; password: string };
+      const { username, password, sessionId } = req.body as { username: string; password: string; sessionId?: string };
       if (!username?.trim() || !password) {
         return res.status(400).json({ error: "Логин и пароль обязательны" });
       }
@@ -1310,9 +1329,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         user.nano2Balance += pending.nano2;
         user.proBalance += pending.pro;
       }
+      // Переносим карточки из временной сессии в аккаунт
+      let transferredCount = 0;
+      if (sessionId) {
+        transferredCount = await storage.transferSessionGenerations(sessionId, user.id);
+        if (transferredCount > 0) {
+          console.log(`[auth/login] Перенесено ${transferredCount} карточек из сессии ${sessionId} в аккаунт ${user.id}`);
+        }
+      }
       req.session.userId = user.id;
       req.session.username = user.username;
-      res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, trialCount: user.trialCount });
+      res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, trialCount: user.trialCount, transferredCount });
     } catch (err: any) {
       console.error("[auth/login] error:", err);
       res.status(500).json({ error: "Ошибка входа" });
@@ -1349,6 +1376,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     res.json({ ok: true });
   });
+
+  // Периодическая очистка просроченных карточек (каждые 30 мин)
+  setInterval(() => {
+    storage.deleteExpiredGenerations().then((count) => {
+      if (count > 0) console.log(`[cleanup] Удалено ${count} просроченных карточек`);
+    }).catch(() => {});
+  }, 30 * 60 * 1000);
 
   return httpServer;
 }
