@@ -52,6 +52,7 @@ interface ServerUser {
   pendingPro: number;
   nano2Balance: number;
   proBalance: number;
+  isDeveloper: boolean;
 }
 
 interface PaymentRecord {
@@ -436,6 +437,7 @@ function UsersTab() {
                   <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Генераций</th>
                   <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Nano2</th>
                   <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Pro</th>
+                  <th className="text-center px-4 py-2.5 font-medium text-muted-foreground hidden md:table-cell">Роль</th>
                   <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Действия</th>
                 </tr>
               </thead>
@@ -456,6 +458,11 @@ function UsersTab() {
                         {u.proBalance}
                         {u.pendingPro > 0 && <span className="text-blue-500 ml-1">(+{u.pendingPro})</span>}
                       </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-center hidden md:table-cell">
+                      {u.isDeveloper
+                        ? <Badge variant="default" className="text-[10px]">Разраб.</Badge>
+                        : <span className="text-muted-foreground text-[10px]">Пользователь</span>}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex gap-1 justify-end flex-wrap">

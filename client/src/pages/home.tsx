@@ -219,22 +219,13 @@ export default function Home() {
     }
   }, [generations, activeGenerationId]);
 
+  const sessionGeneratedIds = useRef<Set<string>>(new Set());
   const deductedIds = useRef<Set<string>>(new Set());
-  const initializedFromHistory = useRef(false);
-
-  useEffect(() => {
-    if (initializedFromHistory.current || generations.length === 0) return;
-    initializedFromHistory.current = true;
-    for (const g of generations) {
-      if (g.status === "done" || g.status === "error") {
-        deductedIds.current.add(g.id);
-      }
-    }
-  }, [generations]);
 
   useEffect(() => {
     if (!polledGeneration) return;
     if (polledGeneration.status === "done") {
+      if (!sessionGeneratedIds.current.has(polledGeneration.id)) return;
       if (deductedIds.current.has(polledGeneration.id)) return;
       deductedIds.current.add(polledGeneration.id);
       if (isAuth) {
@@ -295,6 +286,7 @@ export default function Home() {
     },
     onSuccess: (data) => {
       setIsTrialGeneration(!isAuth);
+      sessionGeneratedIds.current.add(data.id);
       setActiveGenerationId(data.id);
       queryClient.invalidateQueries({ queryKey: ["/api/generations"] });
     },
@@ -320,6 +312,7 @@ export default function Home() {
       return response.json();
     },
     onSuccess: (data) => {
+      sessionGeneratedIds.current.add(data.id);
       setActiveGenerationId(data.id);
       queryClient.invalidateQueries({ queryKey: ["/api/generations"] });
     },
@@ -344,6 +337,7 @@ export default function Home() {
       return response.json();
     },
     onSuccess: (data) => {
+      sessionGeneratedIds.current.add(data.id);
       setActiveGenerationId(data.id);
       queryClient.invalidateQueries({ queryKey: ["/api/generations"] });
     },

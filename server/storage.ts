@@ -7,6 +7,7 @@ export interface AppUser extends User {
   nano2Balance: number;
   proBalance: number;
   trialCount: number;
+  isDeveloper: boolean;
   createdAt: Date;
 }
 
@@ -30,6 +31,7 @@ export interface ServerUser {
   pendingPro: number;
   nano2Balance: number;
   proBalance: number;
+  isDeveloper: boolean;
 }
 
 export interface ErrorLog {
@@ -155,7 +157,7 @@ export class MemStorage implements IStorage {
 
   async createAppUser(username: string, passwordHash: string): Promise<AppUser> {
     const id = randomUUID();
-    const user: AppUser = { id, username, password: passwordHash, passwordHash, nano2Balance: 0, proBalance: 0, trialCount: 0, createdAt: new Date() };
+    const user: AppUser = { id, username, password: passwordHash, passwordHash, nano2Balance: 0, proBalance: 0, trialCount: 0, isDeveloper: false, createdAt: new Date() };
     this.appUsers.set(id, user);
     return user;
   }
@@ -318,6 +320,7 @@ export class MemStorage implements IStorage {
         ...su,
         nano2Balance: appUser?.nano2Balance ?? 0,
         proBalance: appUser?.proBalance ?? 0,
+        isDeveloper: appUser?.isDeveloper ?? false,
       };
     });
   }
