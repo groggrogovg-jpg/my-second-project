@@ -170,7 +170,7 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {canEdit && !isTrial && (
+              {canEdit && (
                 <Button
                   variant="outline"
                   size="sm"
