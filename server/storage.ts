@@ -109,6 +109,9 @@ export class MemStorage implements IStorage {
   private errorLogs: ErrorLog[];
   private supportChats: Map<string, SupportChat>;
   private supportMessages: Map<string, SupportMessage>;
+  // Admin reset tokens (not in IStorage interface — admin-only)
+  private adminResetTokens: Map<string, Date>;
+  adminOverrideCode: string | null;
 
   constructor() {
     this.users = new Map();
@@ -119,6 +122,32 @@ export class MemStorage implements IStorage {
     this.errorLogs = [];
     this.supportChats = new Map();
     this.supportMessages = new Map();
+    this.adminResetTokens = new Map();
+    this.adminOverrideCode = null;
+  }
+
+  createAdminResetToken(): string {
+    const token = randomUUID();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    this.adminResetTokens.set(token, expiresAt);
+    return token;
+  }
+
+  validateAdminResetToken(token: string): boolean {
+    const expiresAt = this.adminResetTokens.get(token);
+    if (!expiresAt) return false;
+    if (new Date() > expiresAt) {
+      this.adminResetTokens.delete(token);
+      return false;
+    }
+    return true;
+  }
+
+  consumeAdminResetToken(token: string, newCode: string): boolean {
+    if (!this.validateAdminResetToken(token)) return false;
+    this.adminResetTokens.delete(token);
+    this.adminOverrideCode = newCode;
+    return true;
   }
 
   async createAppUser(username: string, passwordHash: string): Promise<AppUser> {

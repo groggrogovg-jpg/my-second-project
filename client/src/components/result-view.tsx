@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +40,8 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
   const [editorOpen, setEditorOpen] = useState(false);
   const [textEditorOpen, setTextEditorOpen] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [canvasReady, setCanvasReady] = useState(false);
   const analysis = generation.gptAnalysis as GptAnalysis | null;
 
   const genType = (generation as any).generationType as string | undefined;
@@ -100,6 +102,37 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
       setIsRegenerating(false);
     }
   };
+
+  useEffect(() => {
+    if (!isTrial || !mediaUrl || isVideo) return;
+    setCanvasReady(false);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.naturalWidth || 1024;
+      canvas.height = img.naturalHeight || 1024;
+      ctx.drawImage(img, 0, 0);
+      const size = Math.min(canvas.width, canvas.height);
+      const fontSize = Math.round(size * 0.075);
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate(-Math.PI / 6);
+      ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.38)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+      ctx.shadowBlur = 6;
+      ctx.fillText("КардоМатик", 0, 0);
+      ctx.restore();
+      setCanvasReady(true);
+    };
+    img.onerror = () => setCanvasReady(false);
+    img.src = `/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`;
+  }, [isTrial, mediaUrl, isVideo]);
 
   const headerTitle = isVideo ? "Видео готово!" : isTryon ? "Примерка готова!" : "Карточка готова!";
   const newLabel = isVideo ? "Новое видео" : isTryon ? "Новая примерка" : "Новая карточка";
@@ -193,30 +226,28 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
                     className="w-full max-h-[520px] object-contain"
                     data-testid="video-result"
                   />
-                ) : (
+                ) : isTrial ? (
                   <>
-                    <img
-                      src={mediaUrl}
-                      alt={isTryon ? "Примерка одежды" : "Готовая карточка товара"}
-                      className="w-full h-full object-contain max-h-[520px]"
+                    <canvas
+                      ref={canvasRef}
+                      className="w-full object-contain max-h-[520px]"
+                      style={{ display: canvasReady ? "block" : "none" }}
+                      onContextMenu={(e) => e.preventDefault()}
                       data-testid="img-result"
                     />
-                    {isTrial && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-                        <div
-                          className="text-white/40 font-bold text-2xl sm:text-4xl tracking-wider"
-                          style={{
-                            transform: "rotate(-30deg)",
-                            textShadow: "0 1px 3px rgba(0,0,0,0.5)",
-                            whiteSpace: "nowrap",
-                            userSelect: "none",
-                          }}
-                        >
-                          КардоМатик
-                        </div>
+                    {!canvasReady && (
+                      <div className="w-full flex items-center justify-center py-16 text-sm text-muted-foreground">
+                        Загрузка изображения...
                       </div>
                     )}
                   </>
+                ) : (
+                  <img
+                    src={mediaUrl}
+                    alt={isTryon ? "Примерка одежды" : "Готовая карточка товара"}
+                    className="w-full h-full object-contain max-h-[520px]"
+                    data-testid="img-result"
+                  />
                 )
               ) : (
                 <div className="text-center text-muted-foreground text-sm p-8">
@@ -251,23 +282,21 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
                 <Target className="w-4 h-4 text-primary flex-shrink-0" />
                 <h3 className="font-semibold text-foreground">Маркетинговый анализ GPT-4o</h3>
               </div>
-              {!isTrial && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setTextEditorOpen(true)}
-                  disabled={isRegenerating}
-                  data-testid="button-edit-text"
-                  className="h-7 text-xs gap-1 text-muted-foreground hover:text-primary"
-                >
-                  {isRegenerating ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-3.5 h-3.5" />
-                  )}
-                  {isRegenerating ? "Генерация..." : "Изменить текст"}
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setTextEditorOpen(true)}
+                disabled={isRegenerating}
+                data-testid="button-edit-text"
+                className="h-7 text-xs gap-1 text-muted-foreground hover:text-primary"
+              >
+                {isRegenerating ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5" />
+                )}
+                {isRegenerating ? "Генерация..." : "Изменить текст"}
+              </Button>
             </div>
 
             <div className="space-y-1">

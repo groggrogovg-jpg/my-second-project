@@ -698,7 +698,7 @@ function PhotoBlock({
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold text-foreground">Ваш товар</span>
+        <span className="text-sm font-semibold text-foreground">Модель</span>
         <span className="text-2xl font-bold text-muted-foreground/30 leading-none">01</span>
       </div>
 

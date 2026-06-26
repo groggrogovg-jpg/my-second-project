@@ -76,11 +76,20 @@ function fmt(dateStr: string) {
   return new Date(dateStr).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
 }
 
+type LoginView = "login" | "forgot" | "reset";
+
 export default function Admin() {
   const [isDev, setIsDev] = useState(() => localStorage.getItem(IS_DEV_KEY) === "1");
   const [devCodeInput, setDevCodeInput] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [tab, setTab] = useState<AdminTab>("users");
+  const [loginView, setLoginView] = useState<LoginView>("login");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotToken, setForgotToken] = useState<string | null>(null);
+  const [resetToken, setResetToken] = useState("");
+  const [resetNewCode, setResetNewCode] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
   const { toast } = useToast();
 
   const handleAuth = async () => {
@@ -102,7 +111,104 @@ export default function Admin() {
     }
   };
 
+  const handleForgot = async () => {
+    setForgotLoading(true);
+    try {
+      const res = await fetch("/api/admin/forgot-code", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Ошибка");
+      setForgotToken(data.token);
+    } catch (e: any) {
+      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (!resetToken.trim() || !resetNewCode.trim()) return;
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/admin/reset-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: resetToken.trim(), newCode: resetNewCode.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Ошибка");
+      setResetDone(true);
+      toast({ title: "Код изменён", description: "Войдите с новым кодом. Код действует до перезапуска сервера." });
+      setTimeout(() => {
+        setLoginView("login");
+        setResetDone(false);
+        setResetToken("");
+        setResetNewCode("");
+        setForgotToken(null);
+      }, 2500);
+    } catch (e: any) {
+      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   if (!isDev) {
+    if (loginView === "forgot") {
+      return (
+        <div className="min-h-screen bg-background flex items-center justify-center px-4">
+          <Card className="w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-primary" />
+              <h1 className="font-bold text-lg text-foreground">Восстановление доступа</h1>
+            </div>
+            {!forgotToken ? (
+              <>
+                <p className="text-sm text-muted-foreground">Нажмите кнопку ниже — одноразовый токен появится на экране (и будет напечатан в консоль сервера). Действителен 15 минут.</p>
+                <Button className="w-full" onClick={handleForgot} disabled={forgotLoading} data-testid="button-forgot-submit">
+                  {forgotLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Получить токен"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">Ваш токен (скопируйте и вставьте ниже):</p>
+                <div className="rounded-lg border border-border bg-muted px-3 py-2 text-xs font-mono break-all select-all text-foreground" data-testid="text-reset-token">
+                  {forgotToken}
+                </div>
+                <p className="text-sm text-muted-foreground">Укажите новый код доступа:</p>
+                <input
+                  type="text"
+                  placeholder="Токен"
+                  value={resetToken}
+                  onChange={(e) => setResetToken(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  data-testid="input-reset-token"
+                />
+                <input
+                  type="password"
+                  placeholder="Новый код доступа"
+                  value={resetNewCode}
+                  onChange={(e) => setResetNewCode(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleReset()}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  data-testid="input-new-code"
+                />
+                <Button className="w-full" onClick={handleReset} disabled={resetLoading || !resetToken.trim() || !resetNewCode.trim()} data-testid="button-reset-submit">
+                  {resetLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : resetDone ? "Готово!" : "Сменить код"}
+                </Button>
+              </>
+            )}
+            <button
+              onClick={() => { setLoginView("login"); setForgotToken(null); setResetToken(""); setResetNewCode(""); }}
+              className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="button-back-to-login"
+            >
+              ← Вернуться к входу
+            </button>
+          </Card>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-background flex items-center justify-center px-4">
         <Card className="w-full max-w-sm p-6 space-y-4">
@@ -122,11 +228,20 @@ export default function Admin() {
           <Button className="w-full" onClick={handleAuth} disabled={authLoading || !devCodeInput.trim()} data-testid="button-admin-auth">
             {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Войти"}
           </Button>
-          <Link href="/app">
-            <Button variant="outline" className="w-full gap-2">
-              <ArrowLeft className="w-3.5 h-3.5" />На главную
-            </Button>
-          </Link>
+          <div className="flex items-center justify-between">
+            <Link href="/app">
+              <Button variant="outline" className="gap-2">
+                <ArrowLeft className="w-3.5 h-3.5" />На главную
+              </Button>
+            </Link>
+            <button
+              onClick={() => setLoginView("forgot")}
+              className="text-sm text-muted-foreground hover:text-primary transition-colors"
+              data-testid="button-forgot-link"
+            >
+              Забыли код?
+            </button>
+          </div>
         </Card>
       </div>
     );

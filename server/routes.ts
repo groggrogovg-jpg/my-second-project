@@ -1,7 +1,7 @@
 import express from "express";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, MemStorage } from "./storage";
 import multer from "multer";
 import OpenAI from "openai";
 import axios from "axios";
@@ -15,10 +15,11 @@ const DEV_PROMO_CODE = process.env.DEV_PROMO_CODE || "DEV100";
 
 function adminOnly(req: Request, res: Response, next: Function) {
   const devCode = (req.headers["x-dev-code"] as string) || "";
-  if (!devCode || devCode.trim() !== DEV_PROMO_CODE) {
-    return res.status(403).json({ error: "Доступ запрещён" });
-  }
-  next();
+  if (!devCode) return res.status(403).json({ error: "Доступ запрещён" });
+  const memStorage = storage as MemStorage;
+  if (devCode.trim() === DEV_PROMO_CODE) return next();
+  if (memStorage.adminOverrideCode && devCode.trim() === memStorage.adminOverrideCode) return next();
+  return res.status(403).json({ error: "Доступ запрещён" });
 }
 
 const TEST_MODE = false;
@@ -722,6 +723,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/admin/logs", adminOnly, async (_req: Request, res: Response) => {
     const logs = await storage.getErrorLogs();
     return res.json(logs);
+  });
+
+  app.post("/api/admin/forgot-code", async (_req: Request, res: Response) => {
+    const memStorage = storage as MemStorage;
+    const token = memStorage.createAdminResetToken();
+    console.log(`\n[admin/forgot-code] Одноразовый токен для сброса кода:`);
+    console.log(`[admin/forgot-code] TOKEN: ${token}`);
+    console.log(`[admin/forgot-code] Действителен 15 минут\n`);
+    return res.json({ ok: true, token });
+  });
+
+  app.post("/api/admin/reset-code", async (req: Request, res: Response) => {
+    const { token, newCode } = req.body as { token?: string; newCode?: string };
+    if (!token || !newCode || newCode.trim().length < 4) {
+      return res.status(400).json({ error: "Укажите токен и новый код (минимум 4 символа)" });
+    }
+    const memStorage = storage as MemStorage;
+    const ok = memStorage.consumeAdminResetToken(token.trim(), newCode.trim());
+    if (!ok) {
+      return res.status(400).json({ error: "Токен недействителен или истёк" });
+    }
+    console.log(`[admin/reset-code] Код доступа изменён (действует до перезапуска сервера)`);
+    return res.json({ ok: true });
   });
 
   app.post("/api/payment/create", async (req: Request, res: Response) => {
