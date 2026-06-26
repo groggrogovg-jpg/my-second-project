@@ -130,7 +130,10 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
       ctx.restore();
       setCanvasReady(true);
     };
-    img.onerror = () => setCanvasReady(false);
+    img.onerror = () => {
+      setCanvasReady(false);
+      // Fallback: show plain image with CSS overlay if canvas fails
+    };
     img.src = `/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`;
   }, [isTrial, mediaUrl, isVideo]);
 
