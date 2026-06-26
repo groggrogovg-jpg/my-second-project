@@ -258,7 +258,15 @@ async function analyzeWithGpt(imageBase64: string, mimeType: string, notes?: str
 
   const content = response.choices[0]?.message?.content || "";
   const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-  return JSON.parse(cleaned);
+  try {
+    return JSON.parse(cleaned);
+  } catch (parseErr) {
+    console.error(`[analyzeWithGpt] \u2717 JSON parse error: ${(parseErr as Error).message}`);
+    console.error(`[analyzeWithGpt] \u2717 Content length=${content.length} cleaned length=${cleaned.length}`);
+    console.error(`[analyzeWithGpt] \u2717 Content preview: ${content.substring(0, 500)}`);
+    console.error(`[analyzeWithGpt] \u2717 Cleaned preview: ${cleaned.substring(0, 500)}`);
+    throw new Error(`\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0430\u0440\u0441\u0438\u043d\u0433\u0430 JSON \u043e\u0442 GPT: ${(parseErr as Error).message}`);
+  }
 }
 
 // Создаём текстовые идеи для поля "О чём рассказать" — только русский текст, без JSON
