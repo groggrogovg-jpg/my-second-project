@@ -18,6 +18,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Landing} />
       <Route path="/app" component={Home} />
+      <Route path="/reset-password" component={Home} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/profile" component={Profile} />
       <Route path="/payment-success" component={PaymentSuccess} />

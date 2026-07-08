@@ -69,19 +69,13 @@ export default function PaymentSuccess() {
       const starsNew = starsCurrent + cards;
       localStorage.setItem(STARS_KEY, String(starsNew));
       setStarsAdded(cards);
-      // Синхронизируем баланс с сервером (если пользователь авторизован)
+      // Баланс аккаунта уже был начислен сервером атомарно в /api/payment/verify
+      // (см. storage.creditConfirmedPayment) — здесь только читаем актуальное значение для отображения.
       try {
         const meRes = await fetch("/api/auth/me");
         if (meRes.ok) {
           const me = await meRes.json();
-          const newNano2 = mdl === "nano2" ? me.nano2Balance + cards : me.nano2Balance;
-          const newPro = mdl === "pro" ? me.proBalance + cards : me.proBalance;
-          const newStars = (me.starsBalance ?? 0) + cards;
-          await fetch("/api/auth/balance", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nano2Balance: newNano2, proBalance: newPro, starsBalance: newStars }),
-          });
+          setCurrentBalance(mdl === "pro" ? me.proBalance : me.nano2Balance);
         }
       } catch { /* игнорируем если не авторизован */ }
     };

@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import type { Generation } from "@shared/schema";
 import {
-  MODELS, ASPECT_RATIOS, VIDEO_STAR_COSTS, TRYON_STAR_COST, TRIAL_LIMIT,
+  MODELS, ASPECT_RATIOS, VIDEO_STAR_COSTS, TRYON_STAR_COST,
   type ModelId, type AspectRatioId,
 } from "@shared/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -32,31 +32,16 @@ const GARMENT_CATEGORIES: { id: GarmentCategory; label: string; examples: string
   { id: "extra", label: "Дополнительно", examples: "Сумка, ремень, часы, бижутерия, пальто" },
 ];
 
-const TRIAL_COUNT_KEY = "kardo_trial_count";
-const SESSION_ID_KEY = "kardo_session_id";
-
-function getLocalTrialCount(): number {
-  return parseInt(localStorage.getItem(TRIAL_COUNT_KEY) || "0", 10);
-}
-function setLocalTrialCount(n: number) {
-  localStorage.setItem(TRIAL_COUNT_KEY, String(Math.max(0, n)));
-}
-function getOrCreateSessionId(): string {
-  let sid = localStorage.getItem(SESSION_ID_KEY);
-  if (!sid) {
-    sid = crypto.randomUUID();
-    localStorage.setItem(SESSION_ID_KEY, sid);
-  }
-  return sid;
-}
-
 interface AuthUser {
   id: string;
   username: string;
+  email: string;
   nano2Balance: number;
   proBalance: number;
   starsBalance: number;
-  trialCount: number;
+  trialNano2Used: boolean;
+  trialProUsed: boolean;
+  trialTryonUsed: boolean;
 }
 
 type ContentTab = "photo" | "card";
@@ -82,7 +67,6 @@ export default function Home() {
 
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
-  const [trialCount, setTrialCountState] = useState<number>(getLocalTrialCount);
 
   const username = authUser?.username ?? null;
   const nano2Balance = authUser?.nano2Balance ?? 0;
@@ -90,11 +74,13 @@ export default function Home() {
   const starsBalance = authUser?.starsBalance ?? 0;
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  const [authUsername, setAuthUsername] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot" | "reset">("login");
+  const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+  const [resetToken, setResetToken] = useState<string | null>(null);
   const [isTrialGeneration, setIsTrialGeneration] = useState(false);
   const [warningModalOpen, setWarningModalOpen] = useState(false);
 
@@ -127,43 +113,93 @@ export default function Home() {
     fetch("/api/auth/me")
       .then((r) => r.ok ? r.json() : null)
       .then((user: AuthUser | null) => {
-        if (user) {
-          setAuthUser(user);
-          // Синхронизируем trialCount с сервером
-          if (user.trialCount > 0) setTrialCountState(user.trialCount);
-        }
+        if (user) setAuthUser(user);
       })
       .catch(() => {})
       .finally(() => setSessionChecked(true));
   }, []);
 
-  // Обновляем балансы на сервере после изменения
-  const syncBalancesToServer = (newNano2: number, newPro: number) => {
-    fetch("/api/auth/balance", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nano2Balance: newNano2, proBalance: newPro, starsBalance: authUser?.starsBalance ?? 0 }),
-    }).catch(() => {});
+  // Если пользователь пришёл по ссылке восстановления пароля — открываем модалку сброса
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("resetToken") || params.get("token");
+    if (token) {
+      setResetToken(token);
+      setAuthMode("reset");
+      setAuthModalOpen(true);
+    }
+  }, []);
+
+  const closeAuthModal = () => {
+    setAuthModalOpen(false);
+    setAuthError("");
+    setAuthMessage("");
+    setAuthEmail("");
+    setAuthPassword("");
+    setResetToken(null);
+    if (window.location.search) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   };
 
-  const updateBalance = (model: ModelId, n: number) => {
-    const newNano2 = model === "nano-banana-2" ? Math.max(0, n) : nano2Balance;
-    const newPro = model !== "nano-banana-2" ? Math.max(0, n) : proBalance;
-    setAuthUser((prev) => prev ? { ...prev, nano2Balance: newNano2, proBalance: newPro } : prev);
-    syncBalancesToServer(newNano2, newPro);
+  const handleForgotPassword = async () => {
+    const email = authEmail.trim();
+    if (!email) return;
+    setAuthError("");
+    setAuthMessage("");
+    setAuthLoading(true);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      setAuthMessage(data.message || "Если аккаунт существует, ссылка для восстановления отправлена.");
+    } catch {
+      setAuthError("Ошибка соединения");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetToken || !authPassword) return;
+    setAuthError("");
+    setAuthMessage("");
+    setAuthLoading(true);
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: resetToken, password: authPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.error || "Ошибка");
+        return;
+      }
+      setAuthMessage("Пароль изменён. Теперь вы можете войти.");
+      setAuthMode("login");
+      setAuthPassword("");
+      setResetToken(null);
+    } catch {
+      setAuthError("Ошибка соединения");
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   const handleAuthSubmit = async () => {
-    const name = authUsername.trim();
-    if (!name || !authPassword) return;
+    if (authMode === "forgot") return handleForgotPassword();
+    if (authMode === "reset") return handleResetPassword();
+    const email = authEmail.trim();
+    if (!email || !authPassword) return;
     setAuthError("");
     setAuthLoading(true);
     try {
       const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
-      const body: any = { username: name, password: authPassword };
-      if (authMode === "login") {
-        body.sessionId = getOrCreateSessionId();
-      }
+      const body: any = { email, password: authPassword };
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -175,17 +211,12 @@ export default function Home() {
         return;
       }
       setAuthUser(data as AuthUser);
-      setAuthModalOpen(false);
-      setAuthUsername("");
-      setAuthPassword("");
-      setAuthError("");
-      // При входе показываем предупреждение о 2-дневном сроке хранения
-      if (authMode === "login" && data.transferredCount !== undefined) {
+      closeAuthModal();
+      // При регистрации показываем предупреждение о 2-дневном сроке хранения карточек
+      if (authMode === "register") {
         setWarningModalOpen(true);
-        // Очищаем sessionId, так как карточки перенесены в аккаунт
-        localStorage.removeItem(SESSION_ID_KEY);
       }
-      toast({ title: authMode === "login" ? `Добро пожаловать, ${data.username}!` : `Аккаунт создан, ${data.username}!` });
+      toast({ title: authMode === "login" ? `Добро пожаловать, ${data.email}!` : `Аккаунт создан, ${data.email}!` });
     } catch {
       setAuthError("Ошибка соединения");
     } finally {
@@ -200,10 +231,10 @@ export default function Home() {
   };
 
   const { data: generations = [] } = useQuery<Generation[]>({
-    queryKey: ["/api/generations", isAuth ? null : getOrCreateSessionId()],
+    queryKey: ["/api/generations", isAuth],
     queryFn: async () => {
-      const url = isAuth ? "/api/generations" : `/api/generations?sessionId=${getOrCreateSessionId()}`;
-      const res = await fetch(url);
+      if (!isAuth) return [];
+      const res = await fetch("/api/generations");
       if (!res.ok) throw new Error("Ошибка загрузки");
       return res.json();
     },
@@ -250,28 +281,29 @@ export default function Home() {
   const sessionGeneratedIds = useRef<Set<string>>(new Set());
   const deductedIds = useRef<Set<string>>(new Set());
 
+  // Сервер списывает баланс/пробную попытку в момент запуска генерации (см. /api/generate*).
+  // Клиенту достаточно перечитать актуальный профиль после завершения или ошибки,
+  // чтобы синхронизировать баланс (включая возврат при ошибке генерации).
+  const refreshAuthUser = () => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((user: AuthUser | null) => { if (user) setAuthUser(user); })
+      .catch(() => {});
+  };
+
   useEffect(() => {
     if (!polledGeneration) return;
     if (polledGeneration.status === "done") {
       if (!sessionGeneratedIds.current.has(polledGeneration.id)) return;
       if (deductedIds.current.has(polledGeneration.id)) return;
       deductedIds.current.add(polledGeneration.id);
-      if (isAuth) {
-        const genType = (polledGeneration as any).generationType || "card";
-        if (genType === "tryon") {
-          updateBalance("nano-banana-2", nano2Balance - 1);
-        } else {
-          const model = (polledGeneration.model as ModelId) || selectedModel;
-          updateBalance(model, (model === "nano-banana-2" ? nano2Balance : proBalance) - 1);
-        }
-      } else {
-        const newCount = getLocalTrialCount() + 1;
-        setLocalTrialCount(newCount);
-        setTrialCountState(newCount);
-        fetch("/api/auth/trial", { method: "POST" }).catch(() => {});
-      }
+      refreshAuthUser();
     }
     if (polledGeneration.status === "error") {
+      if (sessionGeneratedIds.current.has(polledGeneration.id) && !deductedIds.current.has(polledGeneration.id)) {
+        deductedIds.current.add(polledGeneration.id);
+        refreshAuthUser();
+      }
       toast({
         title: "Ошибка генерации",
         description: polledGeneration.errorMessage || "Не удалось создать карточку.",
@@ -285,13 +317,19 @@ export default function Home() {
 
   const hasAnyGarment = Object.values(tryonGarments).some((g) => g.file !== null);
 
-  const trialRemaining = TRIAL_LIMIT - trialCount;
+  // Генерация теперь доступна только авторизованным пользователям.
+  // Каждая функция (nano2/pro/примерка) даёт одну независимую бесплатную попытку.
+  const currentModelTrialUsed = selectedModel === "nano-banana-2" ? authUser?.trialNano2Used : authUser?.trialProUsed;
+  const cardTrialAvailable = isAuth && !currentModelTrialUsed;
+  const tryonTrialAvailable = isAuth && !authUser?.trialTryonUsed;
 
   const canGenerate =
-    activeTab === "card"
-      ? (isAuth ? currentBalance > 0 : trialCount < TRIAL_LIMIT) && selectedFiles.length > 0
+    !isAuth
+      ? false
+      : activeTab === "card"
+      ? (currentBalance > 0 || cardTrialAvailable) && selectedFiles.length > 0
       : activeTab === "photo"
-      ? (isAuth ? nano2Balance > 0 : true) && selectedFiles.length > 0 && hasAnyGarment
+      ? (tryonBalance > 0 || tryonTrialAvailable) && selectedFiles.length > 0 && hasAnyGarment
       : false;
 
   const cardMutation = useMutation({
@@ -303,7 +341,6 @@ export default function Home() {
       if (notes.trim()) formData.append("notes", notes.trim());
       if (noText) formData.append("noText", "true");
       if (authUser?.username) formData.append("username", authUser.username);
-      if (!authUser) formData.append("sessionId", getOrCreateSessionId());
       const response = await fetch("/api/generate", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -314,7 +351,7 @@ export default function Home() {
       return response.json();
     },
     onSuccess: (data) => {
-      setIsTrialGeneration(!isAuth);
+      setIsTrialGeneration(currentBalance <= 0);
       sessionGeneratedIds.current.add(data.id);
       setActiveGenerationId(data.id);
       queryClient.invalidateQueries({ queryKey: ["/api/generations"] });
@@ -331,7 +368,6 @@ export default function Home() {
       formData.append("duration", String(duration));
       if (prompt.trim()) formData.append("prompt", prompt.trim());
       if (authUser?.username) formData.append("username", authUser.username);
-      if (!authUser) formData.append("sessionId", getOrCreateSessionId());
       const response = await fetch("/api/generate-video", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -357,7 +393,6 @@ export default function Home() {
       formData.append("person", personFile);
       garmentFiles.forEach((f) => formData.append("garment", f));
       if (authUser?.username) formData.append("username", authUser.username);
-      if (!authUser) formData.append("sessionId", getOrCreateSessionId());
       const response = await fetch("/api/generate-tryon", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -368,6 +403,7 @@ export default function Home() {
       return response.json();
     },
     onSuccess: (data) => {
+      setIsTrialGeneration(tryonBalance <= 0);
       sessionGeneratedIds.current.add(data.id);
       setActiveGenerationId(data.id);
       queryClient.invalidateQueries({ queryKey: ["/api/generations"] });
@@ -442,7 +478,6 @@ export default function Home() {
       formData.append("image", file);
       formData.append("duration", "5");
       formData.append("prompt", "Smooth product showcase, slow graceful movement, cinematic quality");
-      if (!authUser) formData.append("sessionId", getOrCreateSessionId());
       const response = await fetch("/api/generate-video", { method: "POST", body: formData });
       if (!response.ok) {
         const text = await response.text();
@@ -492,66 +527,120 @@ export default function Home() {
           <Card className="w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-lg">
-                {authMode === "login" ? "Войти в аккаунт" : "Регистрация"}
+                {authMode === "login" ? "Войти в аккаунт"
+                  : authMode === "register" ? "Регистрация"
+                  : authMode === "forgot" ? "Восстановление пароля"
+                  : "Новый пароль"}
               </h2>
-              <button onClick={() => { setAuthModalOpen(false); setAuthError(""); }} className="text-muted-foreground hover:text-foreground">
+              <button onClick={closeAuthModal} className="text-muted-foreground hover:text-foreground">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="flex rounded-lg border border-border overflow-hidden text-sm">
-              <button
-                onClick={() => { setAuthMode("login"); setAuthError(""); }}
-                className={`flex-1 py-2 transition-colors ${authMode === "login" ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                Войти
-              </button>
-              <button
-                onClick={() => { setAuthMode("register"); setAuthError(""); }}
-                className={`flex-1 py-2 transition-colors ${authMode === "register" ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                Регистрация
-              </button>
-            </div>
+            {(authMode === "login" || authMode === "register") && (
+              <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+                <button
+                  onClick={() => { setAuthMode("login"); setAuthError(""); setAuthMessage(""); }}
+                  className={`flex-1 py-2 transition-colors ${authMode === "login" ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Войти
+                </button>
+                <button
+                  onClick={() => { setAuthMode("register"); setAuthError(""); setAuthMessage(""); }}
+                  className={`flex-1 py-2 transition-colors ${authMode === "register" ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Регистрация
+                </button>
+              </div>
+            )}
 
-            <div className="space-y-2">
-              <input
-                type="text"
-                value={authUsername}
-                onChange={(e) => setAuthUsername(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleAuthSubmit(); }}
-                placeholder="Логин"
-                className="w-full h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                autoFocus
-                data-testid="input-auth-username"
-              />
-              <input
-                type="password"
-                value={authPassword}
-                onChange={(e) => setAuthPassword(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleAuthSubmit(); }}
-                placeholder={authMode === "register" ? "Пароль (минимум 6 символов)" : "Пароль"}
-                className="w-full h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                data-testid="input-auth-password"
-              />
-            </div>
+            {(authMode === "login" || authMode === "register" || authMode === "forgot") && (
+              <div className="space-y-2">
+                <input
+                  type="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAuthSubmit(); }}
+                  placeholder="Email"
+                  className="w-full h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  autoFocus
+                  data-testid="input-auth-email"
+                />
+                {authMode !== "forgot" && (
+                  <input
+                    type="password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAuthSubmit(); }}
+                    placeholder={authMode === "register" ? "Пароль (минимум 6 символов)" : "Пароль"}
+                    className="w-full h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    data-testid="input-auth-password"
+                  />
+                )}
+              </div>
+            )}
+
+            {authMode === "reset" && (
+              <div className="space-y-2">
+                <input
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAuthSubmit(); }}
+                  placeholder="Новый пароль (минимум 6 символов)"
+                  className="w-full h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  autoFocus
+                  data-testid="input-reset-password"
+                />
+              </div>
+            )}
 
             {authError && (
               <p className="text-xs text-destructive bg-destructive/10 rounded-md px-3 py-2">{authError}</p>
+            )}
+            {authMessage && (
+              <p className="text-xs text-green-700 bg-green-500/10 rounded-md px-3 py-2">{authMessage}</p>
             )}
 
             <Button
               className="w-full"
               onClick={handleAuthSubmit}
-              disabled={!authUsername.trim() || !authPassword || authLoading}
+              disabled={
+                authLoading ||
+                (authMode === "reset" ? !authPassword : !authEmail.trim() || (authMode !== "forgot" && !authPassword))
+              }
               data-testid="button-auth-submit"
             >
-              {authLoading ? "Загрузка..." : authMode === "login" ? "Войти" : "Создать аккаунт"}
+              {authLoading ? "Загрузка..." :
+                authMode === "login" ? "Войти" :
+                authMode === "register" ? "Создать аккаунт" :
+                authMode === "forgot" ? "Отправить ссылку" :
+                "Сохранить пароль"}
             </Button>
 
-            <p className="text-xs text-muted-foreground text-center">
-              Пробный режим: 3 карточки с водяным знаком бесплатно
-            </p>
+            {authMode === "login" && (
+              <button
+                onClick={() => { setAuthMode("forgot"); setAuthError(""); setAuthMessage(""); }}
+                className="text-xs text-primary hover:underline block mx-auto"
+                data-testid="button-forgot-password"
+              >
+                Забыли пароль?
+              </button>
+            )}
+            {authMode === "forgot" && (
+              <button
+                onClick={() => { setAuthMode("login"); setAuthError(""); setAuthMessage(""); }}
+                className="text-xs text-primary hover:underline block mx-auto"
+              >
+                ← Назад ко входу
+              </button>
+            )}
+
+            {authMode === "register" && (
+              <p className="text-xs text-muted-foreground text-center">
+                После регистрации у вас будет по одной бесплатной пробной генерации для каждой функции
+              </p>
+            )}
           </Card>
         </div>
       )}
@@ -625,19 +714,16 @@ export default function Home() {
                 <CardBalance nano2={nano2Balance} pro={proBalance} username={username!} onLogout={handleLogout} />
               </div>
             ) : (
-              <>
-                <TrialBadge count={trialCount} limit={TRIAL_LIMIT} />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setAuthModalOpen(true)}
-                  className="flex items-center gap-1.5 text-xs"
-                  data-testid="button-login"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Войти</span>
-                </Button>
-              </>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { setAuthMode("login"); setAuthModalOpen(true); }}
+                className="flex items-center gap-1.5 text-xs"
+                data-testid="button-login"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Войти</span>
+              </Button>
             )}
           </div>
         </div>
@@ -683,8 +769,8 @@ export default function Home() {
               isAuth={isAuth}
               currentBalance={currentBalance}
               tryonBalance={tryonBalance}
-              trialCount={trialCount}
-              trialLimit={TRIAL_LIMIT}
+              cardTrialAvailable={cardTrialAvailable}
+              tryonTrialAvailable={tryonTrialAvailable}
               canGenerate={canGenerate}
               currentModel={currentModel}
               videoStars={videoStars}
@@ -692,7 +778,7 @@ export default function Home() {
               hasFiles={selectedFiles.length > 0}
               selectedFiles={selectedFiles}
               onGenerate={handleGenerate}
-              onAuthOpen={() => setAuthModalOpen(true)}
+              onAuthOpen={() => { setAuthMode("login"); setAuthModalOpen(true); }}
             />
           </div>
 
@@ -839,7 +925,7 @@ function GenerateBlock({
   videoCardMode, setVideoCardMode,
   videoDesc, setVideoDesc,
   tryonGarments, setTryonGarments,
-  isAuth, currentBalance, tryonBalance, trialCount, trialLimit,
+  isAuth, currentBalance, tryonBalance, cardTrialAvailable, tryonTrialAvailable,
   canGenerate, currentModel, videoStars, isPending, hasFiles,
   selectedFiles,
   onGenerate, onAuthOpen,
@@ -857,7 +943,7 @@ function GenerateBlock({
   videoDesc: string; setVideoDesc: (v: string) => void;
   tryonGarments: Record<GarmentCategory, { file: File | null; url: string | null }>;
   setTryonGarments: React.Dispatch<React.SetStateAction<Record<GarmentCategory, { file: File | null; url: string | null }>>>;
-  isAuth: boolean; currentBalance: number; tryonBalance: number; trialCount: number; trialLimit: number;
+  isAuth: boolean; currentBalance: number; tryonBalance: number; cardTrialAvailable: boolean; tryonTrialAvailable: boolean;
   canGenerate: boolean;
   currentModel: typeof MODELS[number];
   videoStars: number;
@@ -867,8 +953,6 @@ function GenerateBlock({
   onAuthOpen: () => void;
 }) {
   const hasAnyGarment = Object.values(tryonGarments).some((g) => g.file !== null);
-  const trialRemaining = trialLimit - trialCount;
-  const trialExhausted = !isAuth && trialCount >= trialLimit;
 
   const tabs: { id: ContentTab; label: string; icon: React.ReactNode }[] = [
     { id: "photo", label: "Фото", icon: <Camera className="w-3.5 h-3.5" /> },
@@ -935,19 +1019,10 @@ function GenerateBlock({
       )}
 
       <div className="mt-4 space-y-2">
-        {!isAuth && !trialExhausted && (
-          <div className="flex items-center justify-between text-xs px-1">
-            <span className="text-muted-foreground">Пробный режим</span>
-            <span className={`font-medium ${trialRemaining <= 1 ? "text-destructive" : "text-muted-foreground"}`}>
-              {trialRemaining} из {trialLimit} карточек осталось
-            </span>
-          </div>
-        )}
-
-        {trialExhausted && (
+        {!isAuth && (
           <div className="rounded-lg bg-muted/50 border border-border p-3 text-center space-y-2">
-            <p className="text-xs font-medium text-foreground">Пробный лимит исчерпан</p>
-            <p className="text-xs text-muted-foreground">Войдите и купите пакет для генерации без ограничений</p>
+            <p className="text-xs font-medium text-foreground">Нужен аккаунт для генерации</p>
+            <p className="text-xs text-muted-foreground">Войдите или зарегистрируйтесь — на каждую функцию даётся одна бесплатная попытка</p>
             <Button size="sm" className="w-full text-xs" onClick={onAuthOpen} data-testid="button-auth-prompt">
               <LogIn className="w-3.5 h-3.5 mr-1.5" />
               Войти / Зарегистрироваться
@@ -955,7 +1030,24 @@ function GenerateBlock({
           </div>
         )}
 
-        {isAuth && activeTab === "card" && hasFiles && currentBalance === 0 && (
+        {isAuth && activeTab === "card" && (
+          <div className="flex items-center justify-between text-xs px-1">
+            <span className="text-muted-foreground">{currentBalance > 0 ? "Баланс" : "Бесплатная попытка"}</span>
+            <span className={`font-medium ${currentBalance === 0 && !cardTrialAvailable ? "text-destructive" : "text-muted-foreground"}`}>
+              {currentBalance > 0 ? `${currentBalance} карт.` : cardTrialAvailable ? "доступна" : "уже использована"}
+            </span>
+          </div>
+        )}
+        {isAuth && activeTab === "photo" && (
+          <div className="flex items-center justify-between text-xs px-1">
+            <span className="text-muted-foreground">{tryonBalance > 0 ? "Баланс" : "Бесплатная попытка"}</span>
+            <span className={`font-medium ${tryonBalance === 0 && !tryonTrialAvailable ? "text-destructive" : "text-muted-foreground"}`}>
+              {tryonBalance > 0 ? `${tryonBalance} карт.` : tryonTrialAvailable ? "доступна" : "уже использована"}
+            </span>
+          </div>
+        )}
+
+        {isAuth && activeTab === "card" && hasFiles && currentBalance === 0 && !cardTrialAvailable && (
           <div className="rounded-lg bg-muted/50 border border-border p-3 text-center space-y-2">
             <p className="text-xs font-medium text-foreground">Недостаточно карточек</p>
             <p className="text-xs text-muted-foreground">Купите пакет чтобы продолжить генерацию</p>
@@ -968,7 +1060,7 @@ function GenerateBlock({
           </div>
         )}
 
-        {isAuth && activeTab === "photo" && hasFiles && tryonBalance === 0 && (
+        {isAuth && activeTab === "photo" && hasFiles && tryonBalance === 0 && !tryonTrialAvailable && (
           <div className="rounded-lg bg-muted/50 border border-border p-3 text-center space-y-2">
             <p className="text-xs font-medium text-foreground">Недостаточно примерок</p>
             <p className="text-xs text-muted-foreground">Купите пакет Nano Banana 2 чтобы продолжить примерку</p>
@@ -981,9 +1073,8 @@ function GenerateBlock({
           </div>
         )}
 
-        {/* Show button for non-trial-exhausted OR if photo tab (tryon is always free) */}
-        {(!trialExhausted && !(isAuth && activeTab === "card" && hasFiles && currentBalance === 0)) &&
-         !(isAuth && activeTab === "photo" && hasFiles && tryonBalance === 0) && (
+        {isAuth && !(activeTab === "card" && hasFiles && currentBalance === 0 && !cardTrialAvailable) &&
+         !(activeTab === "photo" && hasFiles && tryonBalance === 0 && !tryonTrialAvailable) && (
           <>
             {activeTab === "card" && !hasFiles && (
               <p className="text-xs text-muted-foreground text-center">Сначала загрузите фото товара</p>
@@ -1007,21 +1098,31 @@ function GenerateBlock({
                 <>
                   <Sparkles className="w-4 h-4 mr-2" />
                   {hasFiles && hasAnyGarment
-                    ? (isAuth ? `Примерить · 1 карточка` : "Примерить (бесплатно)")
+                    ? (tryonBalance > 0 ? "Примерить · 1 карточка" : "Примерить (бесплатно)")
                     : "Загрузите фото и одежду"}
                 </>
               ) : (
-                <><Sparkles className="w-4 h-4 mr-2" />{hasFiles ? `Создать карточку · ${currentModel.pricePerCard} ₽` : "Загрузите фото"}</>
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  {hasFiles
+                    ? (currentBalance > 0 ? `Создать карточку · ${currentModel.pricePerCard} ₽` : "Создать карточку (бесплатно)")
+                    : "Загрузите фото"}
+                </>
               )}
             </Button>
-            {!isAuth && hasFiles && activeTab === "card" && (
-              <p className="text-xs text-muted-foreground text-center">
-                Карточка будет с водяным знаком.{" "}
-                <button className="text-primary hover:underline" onClick={onAuthOpen}>Войдите</button>
-                {" "}и купите пакет для чистого результата.
-              </p>
-            )}
           </>
+        )}
+
+        {!isAuth && hasFiles && (
+          <Button
+            className="w-full font-semibold"
+            size="lg"
+            onClick={onAuthOpen}
+            data-testid="button-generate-auth-gate"
+          >
+            <LogIn className="w-4 h-4 mr-2" />
+            Войдите, чтобы сгенерировать
+          </Button>
         )}
       </div>
     </Card>
@@ -1088,7 +1189,13 @@ function CardTabContent({
         />
       </div>
 
-      <ModelPills selected={selectedModel} onChange={setSelectedModel} isAuth={isAuth} currentBalance={currentBalance} />
+      {isAuth ? (
+        <ModelPills selected={selectedModel} onChange={setSelectedModel} isAuth={isAuth} currentBalance={currentBalance} />
+      ) : (
+        <div className="rounded-lg border border-dashed border-border p-3 text-center">
+          <p className="text-xs text-muted-foreground">Войдите, чтобы выбрать модель ИИ (Nano Banana 2 / Pro)</p>
+        </div>
+      )}
 
       <div>
         <button
@@ -1252,27 +1359,6 @@ function ModelPills({ selected, onChange, isAuth, currentBalance }: {
           );
         })}
       </div>
-    </div>
-  );
-}
-
-function TrialBadge({ count, limit }: { count: number; limit: number }) {
-  const remaining = limit - count;
-  const isEmpty = remaining === 0;
-  const isLow = remaining === 1;
-  const colorClass = isEmpty
-    ? "bg-destructive/10 border-destructive/30 text-destructive"
-    : isLow
-    ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-600"
-    : "bg-muted border-border text-muted-foreground";
-
-  return (
-    <div
-      data-testid="trial-badge"
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium border ${colorClass}`}
-    >
-      <Sparkles className="w-3 h-3" />
-      <span>{isEmpty ? "Лимит исчерпан" : `${remaining}/${limit} пробных`}</span>
     </div>
   );
 }

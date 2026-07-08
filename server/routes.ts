@@ -1,7 +1,7 @@
 import express from "express";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
-import { storage, MemStorage } from "./storage";
+import { storage, MemStorage, type TrialFeature } from "./storage";
 import multer from "multer";
 import OpenAI from "openai";
 import axios from "axios";
@@ -447,6 +447,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/generate", upload.single("image"), async (req: Request, res: Response) => {
     try {
+      const userId = req.session?.userId || "";
+      if (!userId) {
+        return res.status(401).json({ error: "Необходима авторизация для генерации" });
+      }
       if (!req.file) {
         console.log(`[generate] ✗ No image provided`);
         return res.status(400).json({ error: "Изображение не загружено" });
@@ -463,23 +467,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const notes = (req.body?.notes as string) || "";
       const noText = req.body?.noText === "true";
       const username = (req.body?.username as string) || "";
-      const sessionId = (req.body?.sessionId as string) || "";
-      const userId = req.session?.userId || "";
       if (username) storage.trackUser(username).catch(() => {});
       const resolution = model === "nano-banana-2" ? "1K" : "2K";
 
-      console.log(`[generate] ▶ START file=${filename} size=${imageBuffer.length}b model=${model} ratio=${aspectRatio} noText=${noText} notes="${notes.substring(0, 50)}${notes.length > 50 ? "..." : ""}" userId=${userId ? "yes" : "no"} sessionId=${sessionId ? "yes" : "no"}`);
+      // Сервер — источник истины по балансу/пробным попыткам, а не клиент.
+      const feature: TrialFeature = model === "nano-banana-2" ? "nano2" : "pro";
+      const entitlement = await storage.consumeEntitlement(userId, feature);
+      if (!entitlement) {
+        return res.status(403).json({ error: "Нет доступных генераций. Пополните баланс." });
+      }
 
-      const generation = await storage.createGeneration({
-        userId: userId || null,
-        sessionId: sessionId || null,
-        originalImageUrl: imageDataUrl,
-        status: "analyzing",
-        model,
-        aspectRatio,
-        notes: notes || null,
-        expiresAt: userId ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) : null,
-      });
+      console.log(`[generate] ▶ START file=${filename} size=${imageBuffer.length}b model=${model} ratio=${aspectRatio} noText=${noText} notes="${notes.substring(0, 50)}${notes.length > 50 ? "..." : ""}" userId=yes trial=${entitlement.usedTrial}`);
+
+      let generation: Awaited<ReturnType<typeof storage.createGeneration>>;
+      try {
+        generation = await storage.createGeneration({
+          userId,
+          sessionId: null,
+          originalImageUrl: imageDataUrl,
+          status: "analyzing",
+          model,
+          aspectRatio,
+          notes: notes || null,
+          expiresAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+        });
+      } catch (err: any) {
+        await storage.refundEntitlement(userId, feature, entitlement.usedTrial);
+        throw err;
+      }
 
       console.log(`[generate] ✓ Generation record created id=${generation.id}`);
 
@@ -512,6 +527,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           console.error(`[generate] ✗ BACKGROUND ERROR id=${generation.id}: ${message}${axiosDetail}`);
           await storage.updateGeneration(generation.id, { status: "error", errorMessage: message + axiosDetail });
           storage.addErrorLog({ username, model, errorMessage: message + axiosDetail, generationType: "card" }).catch(() => {});
+          await storage.refundEntitlement(userId, feature, entitlement.usedTrial);
         }
       })();
 
@@ -523,26 +539,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/generate-video", upload.single("image"), async (req: Request, res: Response) => {
     try {
+      const userId = req.session?.userId || "";
+      if (!userId) {
+        return res.status(401).json({ error: "Необходима авторизация для генерации" });
+      }
       if (!req.file) return res.status(400).json({ error: "Изображение не загружено" });
 
       const imageBuffer = req.file.buffer;
       const filename = req.file.originalname || "product.jpg";
       const duration = parseInt(req.body?.duration as string) || 5;
       const prompt = (req.body?.prompt as string) || "";
-      const sessionId = (req.body?.sessionId as string) || "";
-      const userId = req.session?.userId || "";
 
       console.log(`[generate-video] ▶ START file=${filename} duration=${duration}s`);
 
       const generation = await storage.createGeneration({
-        userId: userId || null,
-        sessionId: sessionId || null,
+        userId,
+        sessionId: null,
         originalImageUrl: `data:${req.file.mimetype};base64,${imageBuffer.toString("base64")}`,
         status: "generating",
         model: "nano-banana-2",
         aspectRatio: "9:16",
         generationType: "video",
-        expiresAt: userId ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) : null,
+        expiresAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
       });
 
       res.json({ id: generation.id, status: "generating" });
@@ -572,6 +590,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     { name: "garment", maxCount: 5 },
   ]), async (req: Request, res: Response) => {
     try {
+      const userId = req.session?.userId || "";
+      if (!userId) {
+        return res.status(401).json({ error: "Необходима авторизация для генерации" });
+      }
       const files = req.files as Record<string, Express.Multer.File[]>;
       const personFile = files?.person?.[0];
       const garmentFiles = files?.garment || [];
@@ -580,21 +602,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ error: "Нужны фото модели и хотя бы 1 элемент одежды" });
       }
 
-      const sessionId = (req.body?.sessionId as string) || "";
-      const userId = req.session?.userId || "";
+      const entitlement = await storage.consumeEntitlement(userId, "tryon");
+      if (!entitlement) {
+        return res.status(403).json({ error: "Нет доступных генераций. Пополните баланс." });
+      }
 
-      console.log(`[generate-tryon] ▶ START person=${personFile.originalname} garments=${garmentFiles.length}`);
+      console.log(`[generate-tryon] ▶ START person=${personFile.originalname} garments=${garmentFiles.length} trial=${entitlement.usedTrial}`);
 
-      const generation = await storage.createGeneration({
-        userId: userId || null,
-        sessionId: sessionId || null,
-        originalImageUrl: `data:${personFile.mimetype};base64,${personFile.buffer.toString("base64")}`,
-        status: "generating",
-        model: "nano-banana-2",
-        aspectRatio: "9:16",
-        generationType: "tryon",
-        expiresAt: userId ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000) : null,
-      });
+      let generation: Awaited<ReturnType<typeof storage.createGeneration>>;
+      try {
+        generation = await storage.createGeneration({
+          userId,
+          sessionId: null,
+          originalImageUrl: `data:${personFile.mimetype};base64,${personFile.buffer.toString("base64")}`,
+          status: "generating",
+          model: "nano-banana-2",
+          aspectRatio: "9:16",
+          generationType: "tryon",
+          expiresAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+        });
+      } catch (err: any) {
+        await storage.refundEntitlement(userId, "tryon", entitlement.usedTrial);
+        throw err;
+      }
 
       res.json({ id: generation.id, status: "generating" });
 
@@ -612,6 +642,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           console.error(`[generate-tryon] ✗ ERROR id=${generation.id}: ${err.message}${axiosDetail}`);
           await storage.updateGeneration(generation.id, { status: "error", errorMessage: err.message + axiosDetail });
           storage.addErrorLog({ username: (req.body?.username as string) || "", model: "nano-banana-2", errorMessage: err.message + axiosDetail, generationType: "tryon" }).catch(() => {});
+          await storage.refundEntitlement(userId, "tryon", entitlement.usedTrial);
         }
       })();
 
@@ -625,10 +656,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Клиент поллит каждые 3 сек, пока status !== "done" | "error"
   app.get("/api/generation/:id", async (req: Request, res: Response) => {
     try {
+      const userId = req.session?.userId;
+      if (!userId) return res.status(401).json({ error: "Не авторизован" });
       const generationId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const generation = await storage.getGeneration(generationId);
-      if (!generation) {
-        console.log(`[poll] ✗ id=${req.params.id} NOT FOUND`);
+      if (!generation || generation.userId !== userId) {
+        console.log(`[poll] ✗ id=${req.params.id} NOT FOUND or not owned by userId=${userId}`);
         return res.status(404).json({ error: "Не найдено" });
       }
       console.log(`[poll] ▶ id=${generation.id} status=${generation.status}`);
@@ -656,9 +689,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/generations", async (req: Request, res: Response) => {
     try {
       const userId = req.session?.userId as string | undefined;
-      const sessionId = req.query.sessionId as string | undefined;
-      const filter: { userId?: string; sessionId?: string } = userId ? { userId } : sessionId ? { sessionId } : {};
-      const gens = await storage.listGenerations(filter);
+      if (!userId) {
+        return res.json([]);
+      }
+      const gens = await storage.listGenerations({ userId });
       res.json(gens);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -692,6 +726,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Промокод разработчика — пополняет карточки и выдаёт флаг is_developer
   app.post("/api/promo/dev-cards", async (req: Request, res: Response) => {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Не авторизован" });
     const { code } = req.body as { code?: string };
     if (!code) return res.status(400).json({ error: "Код не указан" });
     const memStorage = storage as MemStorage;
@@ -700,8 +736,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!codeOk) {
       return res.status(403).json({ error: "Неверный код разработчика" });
     }
-    console.log(`[promo/dev] ✓ developer code activated`);
-    return res.json({ nano2: 100, pro: 100, isDeveloper: true, message: "Баланс пополнен: +100 Nano2, +100 Pro" });
+    // Начисление происходит здесь же, на сервере — клиент лишь узнаёт результат.
+    const user = await storage.grantDeveloperCredit(userId, 100, 100);
+    console.log(`[promo/dev] ✓ developer code activated userId=${userId}`);
+    return res.json({ ...serializeAppUser(user), message: "Баланс пополнен: +100 Nano2, +100 Pro" });
   });
 
   // Трекинг пользователя при входе
@@ -840,7 +878,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
         const url = `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`;
 
-        await storage.recordPayment({ label, starsToAdd: 0, cardsIncluded: pkg.cardsIncluded, modelType: pkg.modelType, operationId: "", amount: String(amount), username });
+        await storage.recordPayment({ label, starsToAdd: 0, cardsIncluded: pkg.cardsIncluded, modelType: pkg.modelType, operationId: "", amount: String(amount), username, userId: req.session?.userId || null });
         console.log(`[payment/create] ✓ DONE returning url for package`);
         return res.json({ url, label, cards: pkg.cardsIncluded, model: pkg.modelType });
       }
@@ -879,7 +917,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       const url = `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`;
 
-      await storage.recordPayment({ label, starsToAdd: plan.starsIncluded, cardsIncluded: 0, modelType: "", operationId: "", amount: String(amount) });
+      await storage.recordPayment({ label, starsToAdd: plan.starsIncluded, cardsIncluded: 0, modelType: "", operationId: "", amount: String(amount), username: (req.session as any)?.username || "", userId: req.session?.userId || null });
       console.log(`[payment/create] ✓ payment recorded in storage`);
 
       console.log(`[payment/create] ✓ DONE returning url`);
@@ -964,7 +1002,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Проверка статуса платежа по label — клиент использует этот эндпоинт вместо URL-параметров
+  // Проверка статуса платежа по label — клиент использует этот эндпоинт вместо URL-параметров.
+  // Начисление баланса выполняется здесь же, атомарно на сервере (не клиентом),
+  // и только один раз на подтверждённый платёж — это единственный источник истины по балансу.
   app.get("/api/payment/verify", async (req: Request, res: Response) => {
     const label = req.query.label as string;
     if (!label) return res.status(400).json({ error: "label required" });
@@ -978,6 +1018,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!payment.confirmed) {
       console.log(`[payment/verify] ⏳ label=${label} not yet confirmed`);
       return res.json({ paid: false, found: true });
+    }
+
+    const userId = req.session?.userId;
+    if (userId && !payment.credited) {
+      const credited = await storage.creditConfirmedPayment(label, userId);
+      if (credited) {
+        console.log(`[payment/verify] ✓ credited label=${label} to userId=${userId}`);
+      }
     }
 
     console.log(`[payment/verify] ✓ label=${label} confirmed cards=${payment.cardsIncluded} model=${payment.modelType} stars=${payment.starsToAdd}`);
@@ -1307,23 +1355,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ===== AUTH =====
 
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function serializeAppUser(user: Awaited<ReturnType<typeof storage.getAppUserById>>) {
+    if (!user) return null;
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      nano2Balance: user.nano2Balance,
+      proBalance: user.proBalance,
+      starsBalance: user.starsBalance,
+      trialNano2Used: user.trialNano2Used,
+      trialProUsed: user.trialProUsed,
+      trialTryonUsed: user.trialTryonUsed,
+    };
+  }
+
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
-      const { username, password } = req.body as { username: string; password: string };
-      if (!username?.trim() || !password) {
-        return res.status(400).json({ error: "Логин и пароль обязательны" });
+      const { email, password } = req.body as { email: string; password: string };
+      if (!email?.trim() || !password) {
+        return res.status(400).json({ error: "Email и пароль обязательны" });
       }
-      const trimmed = username.trim();
-      if (trimmed.length < 2) return res.status(400).json({ error: "Логин минимум 2 символа" });
+      const trimmed = email.trim().toLowerCase();
+      if (!EMAIL_RE.test(trimmed)) return res.status(400).json({ error: "Введите корректный email" });
       if (password.length < 6) return res.status(400).json({ error: "Пароль минимум 6 символов" });
       const existing = await storage.getAppUserByUsername(trimmed);
-      if (existing) return res.status(409).json({ error: "Пользователь с таким логином уже существует" });
+      if (existing) return res.status(409).json({ error: "Аккаунт с таким email уже существует" });
       const passwordHash = await bcrypt.hash(password, 10);
       const user = await storage.createAppUser(trimmed, passwordHash);
       await storage.trackUser(trimmed);
       req.session.userId = user.id;
       req.session.username = user.username;
-      res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, starsBalance: user.starsBalance, trialCount: user.trialCount });
+      res.json(serializeAppUser(user));
     } catch (err: any) {
       console.error("[auth/register] error:", err);
       res.status(500).json({ error: "Ошибка регистрации" });
@@ -1332,14 +1397,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/auth/login", async (req: Request, res: Response) => {
     try {
-      const { username, password, sessionId } = req.body as { username: string; password: string; sessionId?: string };
-      if (!username?.trim() || !password) {
-        return res.status(400).json({ error: "Логин и пароль обязательны" });
+      const { email, password } = req.body as { email: string; password: string };
+      if (!email?.trim() || !password) {
+        return res.status(400).json({ error: "Email и пароль обязательны" });
       }
-      const user = await storage.getAppUserByUsername(username.trim());
-      if (!user) return res.status(401).json({ error: "Неверный логин или пароль" });
+      const user = await storage.getAppUserByUsername(email.trim());
+      if (!user) return res.status(401).json({ error: "Неверный email или пароль" });
       const ok = await bcrypt.compare(password, user.passwordHash);
-      if (!ok) return res.status(401).json({ error: "Неверный логин или пароль" });
+      if (!ok) return res.status(401).json({ error: "Неверный email или пароль" });
       // Применяем ожидающие зачисления от администратора
       const pending = await storage.consumePendingCredits(user.username);
       if (pending.nano2 > 0 || pending.pro > 0) {
@@ -1347,17 +1412,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         user.nano2Balance += pending.nano2;
         user.proBalance += pending.pro;
       }
-      // Переносим карточки из временной сессии в аккаунт
-      let transferredCount = 0;
-      if (sessionId) {
-        transferredCount = await storage.transferSessionGenerations(sessionId, user.id);
-        if (transferredCount > 0) {
-          console.log(`[auth/login] Перенесено ${transferredCount} карточек из сессии ${sessionId} в аккаунт ${user.id}`);
-        }
-      }
       req.session.userId = user.id;
       req.session.username = user.username;
-      res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, starsBalance: user.starsBalance, trialCount: user.trialCount, transferredCount });
+      res.json(serializeAppUser(user));
     } catch (err: any) {
       console.error("[auth/login] error:", err);
       res.status(500).json({ error: "Ошибка входа" });
@@ -1374,32 +1431,57 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!userId) return res.status(401).json({ error: "Не авторизован" });
     const user = await storage.getAppUserById(userId);
     if (!user) return res.status(401).json({ error: "Пользователь не найден" });
-    res.json({ id: user.id, username: user.username, nano2Balance: user.nano2Balance, proBalance: user.proBalance, starsBalance: user.starsBalance, trialCount: user.trialCount });
+    res.json(serializeAppUser(user));
   });
 
-  app.post("/api/auth/balance", async (req: Request, res: Response) => {
-    const userId = req.session?.userId;
-    if (!userId) return res.status(401).json({ error: "Не авторизован" });
-    const { nano2Balance, proBalance, starsBalance } = req.body as { nano2Balance: number; proBalance: number; starsBalance?: number };
-    await storage.updateAppUserBalances(userId, nano2Balance, proBalance);
-    if (starsBalance !== undefined) {
-      const user = await storage.getAppUserById(userId);
-      if (user) {
-        const delta = starsBalance - user.starsBalance;
-        if (delta !== 0) await storage.updateStarsBalance(userId, delta);
-      }
+  // Примечание: клиентский эндпоинт для произвольной установки баланса был удалён —
+  // это позволяло любому авторизованному пользователю начислить себе баланс напрямую.
+  // Баланс теперь начисляется исключительно доверенными серверными путями:
+  // подтверждённый платёж (см. /api/payment/verify → storage.creditConfirmedPayment)
+  // и проверка dev-промокода (см. /api/promo/dev-cards → storage.grantDeveloperCredit).
+  // Административное изменение баланса — через отдельные admin-маршруты (см. ниже).
+
+  // Примечание: списание баланса/пробной попытки теперь происходит на сервере
+  // атомарно в момент запуска генерации (см. storage.consumeEntitlement в
+  // /api/generate, /api/generate-tryon), а не по отдельному клиентскому запросу.
+
+  // ===== ВОССТАНОВЛЕНИЕ ПАРОЛЯ ПОЛЬЗОВАТЕЛЯ =====
+
+  app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
+    try {
+      const { email } = req.body as { email: string };
+      const generic = { ok: true, message: "Если аккаунт с таким email существует, на него отправлена ссылка для восстановления пароля." };
+      if (!email?.trim()) return res.json(generic);
+      const memStorage = storage as MemStorage;
+      const user = await storage.getAppUserByUsername(email.trim());
+      if (!user) return res.json(generic); // не раскрываем существование аккаунта
+      const token = memStorage.createPasswordResetToken(user.email);
+      const resetUrl = `${req.protocol}://${req.get("host")}/reset-password?token=${encodeURIComponent(token)}`;
+      // Реальный email-провайдер не подключён — ссылка выводится в серверный лог для ручной доставки/тестирования.
+      console.log(`[auth/forgot-password] Ссылка для восстановления пароля (${user.email}): ${resetUrl}`);
+      res.json(generic);
+    } catch (err: any) {
+      console.error("[auth/forgot-password] error:", err);
+      res.status(500).json({ error: "Ошибка запроса восстановления пароля" });
     }
-    res.json({ ok: true });
   });
 
-  app.post("/api/auth/trial", async (req: Request, res: Response) => {
-    const userId = req.session?.userId;
-    if (userId) {
-      await storage.incrementAppUserTrial(userId);
-      const user = await storage.getAppUserById(userId);
-      return res.json({ trialCount: user?.trialCount ?? 0 });
+  app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
+    try {
+      const { token, password } = req.body as { token: string; password: string };
+      if (!token || !password) return res.status(400).json({ error: "Токен и пароль обязательны" });
+      if (password.length < 6) return res.status(400).json({ error: "Пароль минимум 6 символов" });
+      const memStorage = storage as MemStorage;
+      const email = memStorage.consumePasswordResetToken(token);
+      if (!email) return res.status(400).json({ error: "Ссылка недействительна или устарела" });
+      const passwordHash = await bcrypt.hash(password, 10);
+      const ok = await storage.resetUserPassword(email, passwordHash);
+      if (!ok) return res.status(404).json({ error: "Пользователь не найден" });
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[auth/reset-password] error:", err);
+      res.status(500).json({ error: "Ошибка восстановления пароля" });
     }
-    res.json({ ok: true });
   });
 
   // Периодическая очистка просроченных карточек (каждые 30 мин)

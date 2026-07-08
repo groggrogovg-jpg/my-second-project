@@ -50,6 +50,19 @@ interface Props {
 }
 
 export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }: Props) {
+  const [isAuth, setIsAuth] = useState(false);
+  const [hasBalance, setHasBalance] = useState(false);
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((user: any) => {
+        if (user) {
+          setIsAuth(true);
+          setHasBalance((user.nano2Balance ?? 0) > 0 || (user.proBalance ?? 0) > 0);
+        }
+      })
+      .catch(() => {});
+  }, []);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [imageEl, setImageEl] = useState<HTMLImageElement | null>(null);
   const [stageSize, setStageSize] = useState({ width: 600, height: 600 });
@@ -221,6 +234,10 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
 
   const handleExport = async () => {
     if (!stageRef.current || !imageEl) return;
+    if (!isAuth || !hasBalance) {
+      alert(!isAuth ? "Скачивание доступно только после авторизации" : "Скачивание доступно только после покупки пакета карточек");
+      return;
+    }
     setSaving(true);
     try {
       const pixelRatio = imageEl.naturalWidth / stageSize.width;
@@ -309,7 +326,12 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
             <ImageIcon className="w-3.5 h-3.5 mr-1.5" />
             {bgGenerating ? "Генерация..." : `Изменить фон ${BG_EDIT_STAR_COST} ⭐`}
           </Button>
-          <Button size="sm" onClick={handleExport} disabled={saving}>
+          <Button
+            size="sm"
+            onClick={handleExport}
+            disabled={saving || !isAuth || !hasBalance}
+            title={!isAuth ? "Скачивание доступно только после авторизации" : !hasBalance ? "Скачивание доступно только после покупки пакета карточек" : undefined}
+          >
             <Download className="w-3.5 h-3.5 mr-1.5" />
             {saving ? "Сохраняем..." : "Скачать"}
           </Button>

@@ -23,11 +23,14 @@ import {
 } from "lucide-react";
 
 interface AuthUser {
-  id: number;
+  id: string;
   username: string;
+  email?: string;
   nano2Balance: number;
   proBalance: number;
-  trialCount: number;
+  trialNano2Used: boolean;
+  trialProUsed: boolean;
+  trialTryonUsed: boolean;
 }
 
 export default function Profile() {
@@ -85,15 +88,8 @@ export default function Profile() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Неверный код");
-      // Обновляем баланс на сервере
-      const newNano2 = nano2 + data.nano2;
-      const newPro = pro + data.pro;
-      await fetch("/api/auth/balance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nano2Balance: newNano2, proBalance: newPro }),
-      });
-      setAuthUser((prev) => prev ? { ...prev, nano2Balance: newNano2, proBalance: newPro } : prev);
+      // Сервер уже начислил баланс атомарно и вернул актуальный профиль.
+      setAuthUser((prev) => prev ? { ...prev, nano2Balance: data.nano2Balance, proBalance: data.proBalance } : prev);
       setIsDev(true);
       setDevCodeInput("");
       setDevMessage(data.message);

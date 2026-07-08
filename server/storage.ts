@@ -2,15 +2,22 @@ import { type User, type InsertUser, type Generation, type InsertGeneration } fr
 import { randomUUID } from "crypto";
 
 // Полный аккаунт пользователя на сервере (расширяет User)
+// Примечание: username хранит адрес email — единственный идентификатор аккаунта.
 export interface AppUser extends User {
   passwordHash: string;
+  email: string;
   nano2Balance: number;
   proBalance: number;
   starsBalance: number;
-  trialCount: number;
+  // Независимые флаги бесплатной пробной попытки для каждой функции
+  trialNano2Used: boolean;
+  trialProUsed: boolean;
+  trialTryonUsed: boolean;
   isDeveloper: boolean;
   createdAt: Date;
 }
+
+export type TrialFeature = "nano2" | "pro" | "tryon";
 
 export interface PaymentRecord {
   label: string;
@@ -21,6 +28,10 @@ export interface PaymentRecord {
   amount: string;
   confirmed: boolean;
   username: string;
+  // Аккаунт, которому принадлежит платёж (устанавливается при создании, если пользователь авторизован).
+  // Начисление баланса разрешено только владельцу и только один раз (см. `credited`).
+  userId: string | null;
+  credited: boolean;
   createdAt: Date;
 }
 
@@ -67,13 +78,18 @@ export interface SupportMessage {
 
 export interface IStorage {
   // Auth
-  createAppUser(username: string, passwordHash: string): Promise<AppUser>;
+  createAppUser(email: string, passwordHash: string): Promise<AppUser>;
   getAppUserById(id: string): Promise<AppUser | undefined>;
   getAppUserByUsername(username: string): Promise<AppUser | undefined>;
   updateAppUserBalances(id: string, nano2: number, pro: number): Promise<void>;
   updateStarsBalance(id: string, delta: number): Promise<void>;
   resetUserPassword(username: string, passwordHash: string): Promise<boolean>;
-  incrementAppUserTrial(id: string): Promise<void>;
+  markTrialUsed(id: string, feature: TrialFeature): Promise<void>;
+  // Атомарно проверяет и списывает право на генерацию (баланс или пробная попытка).
+  // Возвращает null, если ни баланса, ни пробной попытки нет (запрос должен быть отклонён).
+  consumeEntitlement(id: string, feature: TrialFeature): Promise<{ usedTrial: boolean } | null>;
+  // Откатывает списание, сделанное consumeEntitlement, если генерация не удалась.
+  refundEntitlement(id: string, feature: TrialFeature, usedTrial: boolean): Promise<void>;
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -83,11 +99,16 @@ export interface IStorage {
   listGenerations(filter: { userId?: string; sessionId?: string }): Promise<Generation[]>;
   transferSessionGenerations(sessionId: string, userId: string): Promise<number>;
   deleteExpiredGenerations(): Promise<number>;
-  recordPayment(payment: Omit<PaymentRecord, "confirmed" | "createdAt">): Promise<PaymentRecord>;
+  recordPayment(payment: Omit<PaymentRecord, "confirmed" | "credited" | "createdAt">): Promise<PaymentRecord>;
   updatePaymentOperationId(label: string, operationId: string): Promise<PaymentRecord | undefined>;
   getPaymentByLabel(label: string): Promise<PaymentRecord | undefined>;
   confirmPayment(label: string): Promise<PaymentRecord | undefined>;
   listPayments(): Promise<PaymentRecord[]>;
+  // Атомарно начисляет баланс из подтверждённого платежа владельцу-аккаунту и помечает его начисленным.
+  // Возвращает null, если платёж не найден/не подтверждён/уже начислен/принадлежит другому пользователю.
+  creditConfirmedPayment(label: string, userId: string): Promise<AppUser | null>;
+  // Начисляет баланс разработчика по проверенному промокоду (проверка кода — на сервере).
+  grantDeveloperCredit(userId: string, nano2: number, pro: number): Promise<AppUser | undefined>;
   // Server-side user tracking
   trackUser(username: string): Promise<ServerUser>;
   getServerUser(username: string): Promise<ServerUser | undefined>;
@@ -122,6 +143,8 @@ export class MemStorage implements IStorage {
   // Admin reset tokens (not in IStorage interface — admin-only)
   private adminResetTokens: Map<string, Date>;
   adminOverrideCode: string | null;
+  // Токены восстановления пароля обычных пользователей (не в IStorage — деталь реализации)
+  private passwordResetTokens: Map<string, { email: string; expiresAt: Date }>;
 
   constructor() {
     this.users = new Map();
@@ -134,6 +157,32 @@ export class MemStorage implements IStorage {
     this.supportMessages = new Map();
     this.adminResetTokens = new Map();
     this.adminOverrideCode = null;
+    this.passwordResetTokens = new Map();
+  }
+
+  createPasswordResetToken(email: string): string {
+    const token = randomUUID();
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 минут
+    this.passwordResetTokens.set(token, { email: email.toLowerCase(), expiresAt });
+    return token;
+  }
+
+  // Возвращает email, если токен валиден и не истёк, иначе null. Не удаляет токен.
+  peekPasswordResetToken(token: string): string | null {
+    const entry = this.passwordResetTokens.get(token);
+    if (!entry) return null;
+    if (new Date() > entry.expiresAt) {
+      this.passwordResetTokens.delete(token);
+      return null;
+    }
+    return entry.email;
+  }
+
+  consumePasswordResetToken(token: string): string | null {
+    const email = this.peekPasswordResetToken(token);
+    if (!email) return null;
+    this.passwordResetTokens.delete(token);
+    return email;
   }
 
   createAdminResetToken(): string {
@@ -160,9 +209,24 @@ export class MemStorage implements IStorage {
     return true;
   }
 
-  async createAppUser(username: string, passwordHash: string): Promise<AppUser> {
+  async createAppUser(email: string, passwordHash: string): Promise<AppUser> {
     const id = randomUUID();
-    const user: AppUser = { id, username, password: passwordHash, passwordHash, nano2Balance: 0, proBalance: 0, starsBalance: 0, trialCount: 0, isDeveloper: false, createdAt: new Date() };
+    const normalizedEmail = email.trim().toLowerCase();
+    const user: AppUser = {
+      id,
+      username: normalizedEmail,
+      email: normalizedEmail,
+      password: passwordHash,
+      passwordHash,
+      nano2Balance: 0,
+      proBalance: 0,
+      starsBalance: 0,
+      trialNano2Used: false,
+      trialProUsed: false,
+      trialTryonUsed: false,
+      isDeveloper: false,
+      createdAt: new Date(),
+    };
     this.appUsers.set(id, user);
     return user;
   }
@@ -190,6 +254,66 @@ export class MemStorage implements IStorage {
     }
   }
 
+  async consumeEntitlement(id: string, feature: TrialFeature): Promise<{ usedTrial: boolean } | null> {
+    const user = this.appUsers.get(id);
+    if (!user) return null;
+    if (feature === "nano2") {
+      if (user.nano2Balance > 0) {
+        user.nano2Balance -= 1;
+        return { usedTrial: false };
+      }
+      if (!user.trialNano2Used) {
+        user.trialNano2Used = true;
+        return { usedTrial: true };
+      }
+      return null;
+    }
+    if (feature === "pro") {
+      if (user.proBalance > 0) {
+        user.proBalance -= 1;
+        return { usedTrial: false };
+      }
+      if (!user.trialProUsed) {
+        user.trialProUsed = true;
+        return { usedTrial: true };
+      }
+      return null;
+    }
+    // tryon
+    if (user.nano2Balance > 0) {
+      user.nano2Balance -= 1;
+      return { usedTrial: false };
+    }
+    if (!user.trialTryonUsed) {
+      user.trialTryonUsed = true;
+      return { usedTrial: true };
+    }
+    return null;
+  }
+
+  async refundEntitlement(id: string, feature: TrialFeature, usedTrial: boolean): Promise<void> {
+    const user = this.appUsers.get(id);
+    if (!user) return;
+    if (usedTrial) {
+      if (feature === "nano2") user.trialNano2Used = false;
+      else if (feature === "pro") user.trialProUsed = false;
+      else user.trialTryonUsed = false;
+      return;
+    }
+    if (feature === "nano2") user.nano2Balance += 1;
+    else if (feature === "pro") user.proBalance += 1;
+    else user.nano2Balance += 1;
+  }
+
+  async grantDeveloperCredit(userId: string, nano2: number, pro: number): Promise<AppUser | undefined> {
+    const user = this.appUsers.get(userId);
+    if (!user) return undefined;
+    user.nano2Balance += nano2;
+    user.proBalance += pro;
+    user.isDeveloper = true;
+    return user;
+  }
+
   async resetUserPassword(username: string, passwordHash: string): Promise<boolean> {
     const user = Array.from(this.appUsers.values()).find(
       (u) => u.username.toLowerCase() === username.toLowerCase()
@@ -201,9 +325,12 @@ export class MemStorage implements IStorage {
     return true;
   }
 
-  async incrementAppUserTrial(id: string): Promise<void> {
+  async markTrialUsed(id: string, feature: TrialFeature): Promise<void> {
     const user = this.appUsers.get(id);
-    if (user) user.trialCount++;
+    if (!user) return;
+    if (feature === "nano2") user.trialNano2Used = true;
+    else if (feature === "pro") user.trialProUsed = true;
+    else if (feature === "tryon") user.trialTryonUsed = true;
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -300,17 +427,39 @@ export class MemStorage implements IStorage {
     return count;
   }
 
-  async recordPayment(payment: Omit<PaymentRecord, "confirmed" | "createdAt">): Promise<PaymentRecord> {
+  async recordPayment(payment: Omit<PaymentRecord, "confirmed" | "credited" | "createdAt">): Promise<PaymentRecord> {
     const record: PaymentRecord = {
       cardsIncluded: 0,
       modelType: "",
       username: "",
+      userId: null,
       ...payment,
       confirmed: false,
+      credited: false,
       createdAt: new Date(),
     };
     this.payments.set(payment.label, record);
     return record;
+  }
+
+  async creditConfirmedPayment(label: string, userId: string): Promise<AppUser | null> {
+    const record = this.payments.get(label);
+    if (!record || !record.confirmed || record.credited) return null;
+    if (record.userId && record.userId !== userId) return null;
+    const user = this.appUsers.get(userId);
+    if (!user) return null;
+    if (record.cardsIncluded > 0 && record.modelType) {
+      if (record.modelType === "pro") user.proBalance += record.cardsIncluded;
+      else user.nano2Balance += record.cardsIncluded;
+      user.starsBalance += record.cardsIncluded;
+    }
+    if (record.starsToAdd > 0) {
+      user.starsBalance += record.starsToAdd;
+    }
+    record.credited = true;
+    if (!record.userId) record.userId = userId;
+    this.payments.set(label, record);
+    return user;
   }
 
   async updatePaymentOperationId(label: string, operationId: string): Promise<PaymentRecord | undefined> {
