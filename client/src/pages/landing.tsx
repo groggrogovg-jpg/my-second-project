@@ -1,5 +1,12 @@
 import { Link } from "wouter";
-import { Sparkles, ArrowRight, Upload, Settings2, ImageDown, CheckCircle2, Layers, Shirt, Wand2, Mail, MessageCircle, Phone } from "lucide-react";
+import { Sparkles, ArrowRight, Upload, Settings2, ImageDown, CheckCircle2, Layers, Shirt, Wand2, Mail, MessageCircle, Phone, Plus, ArrowRight as ArrowRightSmall } from "lucide-react";
+
+const TRYON_EXAMPLES: { key: string; label: string; src: string; alt: string }[] = [
+  { key: "model", label: "Модель", src: "/tryon/model.jpg", alt: "Фото модели для виртуальной примерки" },
+  { key: "clothing", label: "Одежда (куртка/платье)", src: "/tryon/clothing.jpg", alt: "Куртка или платье для примерки" },
+  { key: "jeans", label: "Джинсы/брюки", src: "/tryon/jeans.jpg", alt: "Джинсы или брюки для примерки" },
+  { key: "shoes", label: "Обувь", src: "/tryon/shoes.jpg", alt: "Обувь для примерки" },
+];
 
 export default function Landing() {
   return (
@@ -202,6 +209,62 @@ export default function Landing() {
                   Создать свою →
                 </button>
               </Link>
+            </div>
+          </div>
+        </section>
+
+        <section id="tryon-showcase" className="bg-muted/30 border-y border-border py-10 sm:py-16">
+          <div className="max-w-6xl mx-auto px-3 sm:px-6">
+            <div className="text-center mb-10">
+              <div className="inline-flex items-center gap-1.5 bg-sky-500/10 text-sky-600 text-xs font-medium px-3 py-1.5 rounded-full mb-4 border border-sky-500/20">
+                <Shirt className="w-3 h-3" />
+                Виртуальная примерка
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">Наденьте образ на модель без съёмки</h2>
+              <p className="text-muted-foreground max-w-xl mx-auto">
+                Загрузите фото модели и до 5 вещей — ИИ виртуально примерит их и соберёт готовый образ
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-6 lg:gap-4 items-center">
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-3">
+                {TRYON_EXAMPLES.map((ex) => (
+                  <div key={ex.key} className="space-y-2">
+                    <div className="rounded-xl border border-border bg-background aspect-square overflow-hidden relative">
+                      <img src={ex.src} alt={ex.alt} className="w-full h-full object-cover" />
+                      <span className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-background/90 border border-border flex items-center justify-center">
+                        <Plus className="w-3 h-3 text-sky-600" />
+                      </span>
+                    </div>
+                    <p className="text-xs text-center text-muted-foreground font-medium">{ex.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex lg:flex-col items-center justify-center gap-2 text-sky-600 rotate-90 lg:rotate-0">
+                <ArrowRightSmall className="w-6 h-6" />
+              </div>
+
+              <div className="space-y-2 max-w-xs mx-auto w-full">
+                <div className="rounded-xl border-2 border-sky-500/40 aspect-square overflow-hidden relative">
+                  <img src="/tryon/result.jpg" alt="Готовый образ после виртуальной примерки" className="w-full h-full object-cover" />
+                  <div className="absolute bottom-2 right-2 z-10">
+                    <span className="text-[10px] bg-sky-600 text-white px-1.5 py-0.5 rounded-md font-medium">КардоМатик</span>
+                  </div>
+                </div>
+                <p className="text-xs text-center text-sky-600 font-semibold">Готовый образ ✨</p>
+              </div>
+            </div>
+
+            <div className="mt-8 text-center">
+              <div className="inline-flex items-center gap-3 bg-background rounded-xl border border-border px-5 py-3 text-sm text-muted-foreground">
+                <span>Хотите примерить свою одежду?</span>
+                <Link href="/app">
+                  <button className="text-sky-600 font-medium hover:underline underline-offset-2" data-testid="button-tryon-showcase-cta">
+                    Попробовать примерку →
+                  </button>
+                </Link>
+              </div>
             </div>
           </div>
         </section>
