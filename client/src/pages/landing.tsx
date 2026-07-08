@@ -3,8 +3,8 @@ import { Sparkles, ArrowRight, Upload, Settings2, ImageDown, CheckCircle2, Layer
 
 const TRYON_EXAMPLES: { key: string; label: string; src: string; alt: string }[] = [
   { key: "model", label: "Модель", src: "/tryon/model.jpg", alt: "Фото модели для виртуальной примерки" },
-  { key: "clothing", label: "Одежда (куртка/платье)", src: "/tryon/clothing.jpg", alt: "Куртка или платье для примерки" },
-  { key: "jeans", label: "Джинсы/брюки", src: "/tryon/jeans.jpg", alt: "Джинсы или брюки для примерки" },
+  { key: "clothing", label: "Пиджак", src: "/tryon/clothing.jpg", alt: "Пиджак для примерки" },
+  { key: "jeans", label: "Юбка", src: "/tryon/jeans.jpg", alt: "Юбка для примерки" },
   { key: "shoes", label: "Обувь", src: "/tryon/shoes.jpg", alt: "Обувь для примерки" },
 ];
 
