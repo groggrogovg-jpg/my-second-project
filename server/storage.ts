@@ -37,6 +37,8 @@ export interface PaymentRecord {
 
 export interface ServerUser {
   username: string;
+  // ID аккаунта (AppUser), если он уже зарегистрирован; null для legacy-записей без аккаунта.
+  id: string | null;
   registeredAt: Date;
   generationCount: number;
   pendingNano2: number;
@@ -109,6 +111,8 @@ export interface IStorage {
   creditConfirmedPayment(label: string, userId: string): Promise<AppUser | null>;
   // Начисляет баланс разработчика по проверенному промокоду (проверка кода — на сервере).
   grantDeveloperCredit(userId: string, nano2: number, pro: number): Promise<AppUser | undefined>;
+  // Немедленно начисляет баланс существующему аккаунту (admin-панель). Возвращает undefined, если аккаунт не найден.
+  creditAppUserBalanceByUsername(username: string, model: "nano2" | "pro", amount: number): Promise<AppUser | undefined>;
   // Server-side user tracking
   trackUser(username: string): Promise<ServerUser>;
   getServerUser(username: string): Promise<ServerUser | undefined>;
@@ -314,6 +318,16 @@ export class MemStorage implements IStorage {
     return user;
   }
 
+  async creditAppUserBalanceByUsername(username: string, model: "nano2" | "pro", amount: number): Promise<AppUser | undefined> {
+    const user = Array.from(this.appUsers.values()).find(
+      (u) => u.username.toLowerCase() === username.toLowerCase()
+    );
+    if (!user) return undefined;
+    if (model === "pro") user.proBalance += amount;
+    else user.nano2Balance += amount;
+    return user;
+  }
+
   async resetUserPassword(username: string, passwordHash: string): Promise<boolean> {
     const user = Array.from(this.appUsers.values()).find(
       (u) => u.username.toLowerCase() === username.toLowerCase()
@@ -493,6 +507,7 @@ export class MemStorage implements IStorage {
     if (existing) return existing;
     const user: ServerUser = {
       username,
+      id: null,
       registeredAt: new Date(),
       generationCount: 0,
       pendingNano2: 0,
@@ -520,6 +535,7 @@ export class MemStorage implements IStorage {
       );
       return {
         ...su,
+        id: appUser?.id ?? null,
         nano2Balance: appUser?.nano2Balance ?? 0,
         proBalance: appUser?.proBalance ?? 0,
         starsBalance: appUser?.starsBalance ?? 0,
@@ -536,6 +552,7 @@ export class MemStorage implements IStorage {
     } else {
       this.serverUsers.set(username, {
         username,
+        id: null,
         registeredAt: new Date(),
         generationCount: 1,
         pendingNano2: 0,
@@ -551,7 +568,7 @@ export class MemStorage implements IStorage {
   async addPendingCredits(username: string, nano2: number, pro: number): Promise<void> {
     let user = this.serverUsers.get(username);
     if (!user) {
-      user = { username, registeredAt: new Date(), generationCount: 0, pendingNano2: 0, pendingPro: 0, nano2Balance: 0, proBalance: 0, starsBalance: 0, isDeveloper: false };
+      user = { username, id: null, registeredAt: new Date(), generationCount: 0, pendingNano2: 0, pendingPro: 0, nano2Balance: 0, proBalance: 0, starsBalance: 0, isDeveloper: false };
       this.serverUsers.set(username, user);
     }
     user.pendingNano2 += nano2;

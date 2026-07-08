@@ -46,6 +46,7 @@ interface SupportMessage {
 
 interface ServerUser {
   username: string;
+  id: string | null;
   registeredAt: string;
   generationCount: number;
   pendingNano2: number;
@@ -378,7 +379,7 @@ function UsersTab() {
         method: "POST", headers: adminHeaders(), body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error((await res.json()).error || "Ошибка");
-      toast({ title: `+${balanceModal.amount} карточек`, description: `Зачислено для «${balanceModal.username}» при следующем входе.` });
+      toast({ title: `+${balanceModal.amount} карточек`, description: `Баланс «${balanceModal.username}» пополнен немедленно.` });
       setBalanceModal(null);
       await load();
     } catch (e: any) {
@@ -432,7 +433,8 @@ function UsersTab() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Пользователь</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground hidden lg:table-cell">ID</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Email</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground hidden sm:table-cell">Регистрация</th>
                   <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Генераций</th>
                   <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Nano2</th>
@@ -444,6 +446,9 @@ function UsersTab() {
               <tbody>
                 {paged.map((u, i) => (
                   <tr key={u.username} className={`border-b border-border last:border-0 ${i % 2 === 0 ? "" : "bg-muted/20"}`}>
+                    <td className="px-4 py-2.5 text-muted-foreground font-mono text-[10px] hidden lg:table-cell" title={u.id ?? undefined}>
+                      {u.id ? `${u.id.substring(0, 8)}…` : "—"}
+                    </td>
                     <td className="px-4 py-2.5 font-medium text-foreground">{u.username}</td>
                     <td className="px-4 py-2.5 text-muted-foreground hidden sm:table-cell">{fmt(u.registeredAt)}</td>
                     <td className="px-4 py-2.5 text-center text-foreground">{u.generationCount}</td>
@@ -527,7 +532,7 @@ function UsersTab() {
                 ))}
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">Баланс будет зачислен при следующем входе пользователя.</p>
+            <p className="text-xs text-muted-foreground">Баланс будет зачислен немедленно.</p>
             <div className="flex gap-2">
               <Button className="flex-1" onClick={doAddBalance} disabled={actionLoading} data-testid="button-topup-confirm">
                 {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : `+${balanceModal.amount} ${balanceModal.model === "nano2" ? "Nano2" : "Pro"}`}

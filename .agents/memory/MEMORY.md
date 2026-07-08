@@ -2,3 +2,4 @@
 - [Модель доступа к генерации](generation-isolation.md) — генерация требует авторизации (401 без сессии); анонимного/sessionId-режима больше нет
 - [Dev-сервер не хочет автоперезагружаться](dev-server-restart.md) — `tsx server/index.ts` без --watch; после правок в server/* нужен рестарт workflow перед тестированием
 - [Email = username](email-as-username.md) — поле `username` хранит email пользователя; переименовывать по всей кодовой базе не стали, чтобы не задеть admin/payments/tracking
+- [Admin panel user model](admin-panel-user-model.md) — Users tab joins legacy serverUsers with real AppUser accounts; admin actions should credit AppUser directly, not pending credits

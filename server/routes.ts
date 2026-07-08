@@ -22,6 +22,15 @@ function adminOnly(req: Request, res: Response, next: Function) {
   return res.status(403).json({ error: "Доступ запрещён" });
 }
 
+// Идентификатор администратора для логов действий. У админ-панели нет отдельных
+// учётных записей — доступ даётся общим dev-кодом, поэтому в качестве "актора"
+// используем маскированный код (без раскрытия секрета в логах).
+function adminActorLabel(req: Request): string {
+  const devCode = (req.headers["x-dev-code"] as string) || "";
+  if (!devCode) return "admin(unknown)";
+  return `admin(code=${devCode.trim().substring(0, 2)}***)`;
+}
+
 const TEST_MODE = false;
 function getTestPrice(realPrice: number): number {
   return TEST_MODE ? Math.max(1, Math.round(realPrice * 0.01)) : realPrice;
@@ -767,17 +776,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/admin/users/:username/balance", adminOnly, async (req: Request, res: Response) => {
     const { username } = req.params;
-    const { nano2Delta, proDelta, starsDelta } = req.body as { nano2Delta?: number; proDelta?: number; starsDelta?: number };
-    if (nano2Delta === undefined && proDelta === undefined && starsDelta === undefined) {
-      return res.status(400).json({ error: "nano2Delta, proDelta или starsDelta обязательны" });
+    const { nano2Delta, proDelta } = req.body as { nano2Delta?: number; proDelta?: number };
+    if (!nano2Delta && !proDelta) {
+      return res.status(400).json({ error: "nano2Delta или proDelta обязательны" });
     }
-    await storage.addPendingCredits(username, nano2Delta || 0, proDelta || 0);
-    const appUser = await storage.getAppUserByUsername(username);
-    if (appUser && starsDelta !== undefined && starsDelta !== 0) {
-      await storage.updateStarsBalance(appUser.id, starsDelta);
+    if ((nano2Delta && nano2Delta <= 0) || (proDelta && proDelta <= 0)) {
+      return res.status(400).json({ error: "Сумма пополнения должна быть положительной" });
     }
-    console.log(`[admin] ✓ pending credits added for ${username}: nano2=${nano2Delta || 0} pro=${proDelta || 0} stars=${starsDelta || 0}`);
-    return res.json({ ok: true });
+    const model: "nano2" | "pro" = proDelta ? "pro" : "nano2";
+    const amount = proDelta || nano2Delta || 0;
+    // Начисление немедленное — требует существующего аккаунта (email-регистрация).
+    const updated = await storage.creditAppUserBalanceByUsername(username, model, amount);
+    if (!updated) {
+      return res.status(404).json({ error: "У пользователя ещё нет аккаунта — начислить баланс нельзя" });
+    }
+    const actor = adminActorLabel(req);
+    console.log(`[admin] ✓ credit_balance actor=${actor} target=${username} model=${model} amount=${amount} at=${new Date().toISOString()} newNano2=${updated.nano2Balance} newPro=${updated.proBalance}`);
+    return res.json({ ok: true, nano2Balance: updated.nano2Balance, proBalance: updated.proBalance });
   });
 
   app.post("/api/admin/users/:username/reset-balance", adminOnly, async (req: Request, res: Response) => {
@@ -795,7 +810,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const passwordHash = await bcrypt.hash(newPassword, 10);
     const ok = await storage.resetUserPassword(username, passwordHash);
     if (!ok) return res.status(404).json({ error: "Пользователь не найден" });
-    console.log(`[admin] ✓ password reset for ${username}`);
+    const actor = adminActorLabel(req);
+    console.log(`[admin] ✓ reset_password actor=${actor} target=${username} at=${new Date().toISOString()}`);
     return res.json({ ok: true, newPassword });
   });
 
