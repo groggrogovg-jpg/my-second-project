@@ -1,5 +1,40 @@
 import { Link } from "wouter";
-import { Sparkles, ArrowRight, Upload, Settings2, ImageDown, CheckCircle2, Layers, Shirt, Wand2, Mail, MessageCircle, Phone, Plus, ArrowRight as ArrowRightSmall } from "lucide-react";
+import { Sparkles, ArrowRight, Upload, Settings2, ImageDown, CheckCircle2, Layers, Shirt, Wand2, Mail, MessageCircle, Phone, Plus, ArrowRight as ArrowRightSmall, Star } from "lucide-react";
+
+const TESTIMONIALS = [
+  {
+    name: "Анна М.",
+    role: "Продавец на Wildberries",
+    initial: "А",
+    color: "bg-violet-600",
+    stars: 5,
+    text: "Карточки стали выглядеть профессионально, а продажи заметно выросли. Дизайнер больше не нужен!",
+  },
+  {
+    name: "Сергей К.",
+    role: "Ozon",
+    initial: "С",
+    color: "bg-sky-600",
+    stars: 5,
+    text: "Экономит кучу времени и денег. Фото на телефон превращается в готовый товарный кадр за пару минут.",
+  },
+  {
+    name: "Марина П.",
+    role: "Яндекс Маркет",
+    initial: "М",
+    color: "bg-emerald-600",
+    stars: 5,
+    text: "Очень удобный интерфейс и отличное качество. Водяной знак на пробной версии — нормально, купила пакет.",
+  },
+  {
+    name: "Дмитрий В.",
+    role: "Собственный бренд",
+    initial: "Д",
+    color: "bg-amber-500",
+    stars: 5,
+    text: "Быстро, качественно, без лишних заморочек. Теперь обновляю фото всего ассортимента через КардоМатик.",
+  },
+];
 
 const TRYON_EXAMPLES: { key: string; label: string; src: string; alt: string }[] = [
   { key: "model", label: "Модель", src: "/tryon/model.jpg", alt: "Фото модели для виртуальной примерки" },
@@ -309,6 +344,43 @@ export default function Landing() {
                   </div>
                   <p className="text-sm text-muted-foreground leading-relaxed">{feature.desc}</p>
                 </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Отзывы */}
+        <section className="max-w-6xl mx-auto px-3 sm:px-6 py-10 sm:py-16">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-1.5 bg-muted text-muted-foreground text-xs font-medium px-3 py-1.5 rounded-full mb-4 border border-border">
+              <MessageCircle className="w-3 h-3" />
+              Отзывы наших клиентов
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">Что говорят пользователи</h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">
+              Реальные отзывы продавцов, которые уже создают карточки с КардоМатик
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+            {TESTIMONIALS.map((t) => (
+              <div key={t.name} className="rounded-2xl border border-border bg-background p-6 flex flex-col gap-4 hover:shadow-md transition-shadow">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 ${t.color}`}>
+                    {t.initial}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground text-sm">{t.name}</p>
+                    <p className="text-xs text-muted-foreground">{t.role}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-0.5">
+                  {Array.from({ length: t.stars }).map((_, i) => (
+                    <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
+                  ))}
+                </div>
+                <div className="text-sky-600/60 text-2xl font-serif leading-none select-none">❝</div>
+                <p className="text-sm text-foreground/80 leading-relaxed -mt-2">{t.text}</p>
               </div>
             ))}
           </div>

@@ -1404,6 +1404,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.trackUser(trimmed);
       req.session.userId = user.id;
       req.session.username = user.username;
+      // Применяем ожидающие зачисления от администратора (аналогично входу)
+      const pending = await storage.consumePendingCredits(trimmed);
+      if (pending.nano2 > 0 || pending.pro > 0) {
+        await storage.updateAppUserBalances(user.id, user.nano2Balance + pending.nano2, user.proBalance + pending.pro);
+        user.nano2Balance += pending.nano2;
+        user.proBalance += pending.pro;
+      }
       res.json(serializeAppUser(user));
     } catch (err: any) {
       console.error("[auth/register] error:", err);

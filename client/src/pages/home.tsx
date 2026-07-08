@@ -212,8 +212,13 @@ export default function Home() {
       }
       setAuthUser(data as AuthUser);
       closeAuthModal();
-      // При регистрации показываем предупреждение о 2-дневном сроке хранения карточек
       if (authMode === "register") {
+        // Сбрасываем устаревший гостевой баланс из localStorage — баланс зарегистрированного
+        // пользователя управляется только сервером и начинается с нуля.
+        localStorage.removeItem("kardo_nano2_balance");
+        localStorage.removeItem("kardo_pro_balance");
+        localStorage.removeItem("kardo_stars");
+        // При регистрации показываем предупреждение о 2-дневном сроке хранения карточек
         setWarningModalOpen(true);
       }
       toast({ title: authMode === "login" ? `Добро пожаловать, ${data.email}!` : `Аккаунт создан, ${data.email}!` });
