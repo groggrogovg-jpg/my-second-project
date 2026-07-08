@@ -246,8 +246,8 @@ export default function Landing() {
               </div>
 
               <div className="space-y-2 max-w-xs mx-auto w-full">
-                <div className="rounded-xl border-2 border-sky-500/40 aspect-square overflow-hidden relative">
-                  <img src="/tryon/result.jpg" alt="Готовый образ после виртуальной примерки" className="w-full h-full object-cover" />
+                <div className="rounded-xl border-2 border-sky-500/40 aspect-[2/3] overflow-hidden relative">
+                  <img src="/tryon/result.jpg" alt="Готовый образ после виртуальной примерки" className="w-full h-full object-cover object-top" />
                   <div className="absolute bottom-2 right-2 z-10">
                     <span className="text-[10px] bg-sky-600 text-white px-1.5 py-0.5 rounded-md font-medium">КардоМатик</span>
                   </div>
