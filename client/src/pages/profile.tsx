@@ -2,13 +2,10 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft,
   Sparkles,
   User,
-  Package,
   Zap,
   Crown,
   LogOut,
@@ -16,9 +13,6 @@ import {
   Image,
   Wand2,
   Shirt,
-  ShieldCheck,
-  Loader2,
-  LayoutDashboard,
   MessageCircle,
 } from "lucide-react";
 
@@ -38,10 +32,6 @@ export default function Profile() {
   const [sessionChecked, setSessionChecked] = useState(false);
   const [totalCards, setTotalCards] = useState(0);
   const [totalTryons, setTotalTryons] = useState(0);
-  const [isDev, setIsDev] = useState(false);
-  const [devCodeInput, setDevCodeInput] = useState("");
-  const [devLoading, setDevLoading] = useState(false);
-  const [devMessage, setDevMessage] = useState<string | null>(null);
 
   const username = authUser?.username ?? null;
   const nano2 = authUser?.nano2Balance ?? 0;
@@ -74,30 +64,6 @@ export default function Profile() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     setAuthUser(null);
     window.location.href = "/app";
-  };
-
-  const handleDevCode = async () => {
-    if (!devCodeInput.trim()) return;
-    setDevLoading(true);
-    setDevMessage(null);
-    try {
-      const res = await fetch("/api/promo/dev-cards", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: devCodeInput.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Неверный код");
-      // Сервер уже начислил баланс атомарно и вернул актуальный профиль.
-      setAuthUser((prev) => prev ? { ...prev, nano2Balance: data.nano2Balance, proBalance: data.proBalance } : prev);
-      setIsDev(true);
-      setDevCodeInput("");
-      setDevMessage(data.message);
-    } catch (e: any) {
-      setDevMessage("❌ " + e.message);
-    } finally {
-      setDevLoading(false);
-    }
   };
 
   if (!sessionChecked) {
@@ -258,48 +224,6 @@ export default function Profile() {
           </p>
         </div>
 
-        {/* Developer section */}
-        {isDev ? (
-          <Card className="p-4 border border-primary/30 bg-primary/5 space-y-3">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-primary" />
-              <span className="text-sm font-semibold text-foreground">Режим разработчика</span>
-              <Badge variant="secondary" className="ml-auto text-xs">Активен</Badge>
-            </div>
-            <Separator />
-            <Link href="/admin">
-              <Button variant="outline" size="sm" className="gap-1.5 w-full" data-testid="button-go-admin">
-                <LayoutDashboard className="w-3.5 h-3.5" />
-                Открыть панель администратора
-              </Button>
-            </Link>
-          </Card>
-        ) : (
-          <Card className="p-4 border border-border space-y-3">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-semibold text-foreground">Код разработчика</span>
-            </div>
-            <p className="text-xs text-muted-foreground">Введите код для активации режима разработчика и пополнения баланса.</p>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                placeholder="Введите код..."
-                value={devCodeInput}
-                onChange={(e) => setDevCodeInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleDevCode()}
-                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                data-testid="input-dev-code"
-              />
-              <Button size="sm" onClick={handleDevCode} disabled={devLoading || !devCodeInput.trim()} data-testid="button-activate-dev">
-                {devLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Активировать"}
-              </Button>
-            </div>
-            {devMessage && (
-              <p className={`text-xs font-medium ${devMessage.startsWith("❌") ? "text-destructive" : "text-green-600"}`}>{devMessage}</p>
-            )}
-          </Card>
-        )}
       </main>
     </div>
   );
