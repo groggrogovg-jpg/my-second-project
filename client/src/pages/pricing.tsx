@@ -3,6 +3,8 @@ import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Sparkles, Check, ArrowLeft, Zap, Crown, Package, Loader2 } from "lucide-react";
 import { NANO2_PACKAGES, PRO_PACKAGES } from "@shared/schema";
@@ -130,6 +132,7 @@ function PackagesGrid({
 }) {
   const { toast } = useToast();
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState<Record<string, boolean>>({});
 
   const handlePay = async (packageId: string) => {
     setLoadingId(packageId);
@@ -215,7 +218,7 @@ function PackagesGrid({
               className="w-full"
               variant={pkg.popular ? "default" : "outline"}
               onClick={() => handlePay(pkg.id)}
-              disabled={loadingId !== null}
+              disabled={loadingId !== null || !agreed[pkg.id]}
               data-testid={`pay-${pkg.id}`}
             >
               {loadingId === pkg.id ? (
@@ -224,6 +227,32 @@ function PackagesGrid({
                 "Оплатить"
               )}
             </Button>
+
+            <div className="flex items-start gap-2 mt-2">
+              <Checkbox
+                id={`agree-${pkg.id}`}
+                checked={!!agreed[pkg.id]}
+                onCheckedChange={(checked) =>
+                  setAgreed((prev) => ({ ...prev, [pkg.id]: checked === true }))
+                }
+                className="mt-0.5"
+              />
+              <Label
+                htmlFor={`agree-${pkg.id}`}
+                className="text-xs text-muted-foreground leading-snug cursor-pointer"
+              >
+                Принимаю{" "}
+                <a
+                  href="https://magvi.ai/legal/subscription-agreement.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  соглашение о подписке
+                </a>
+              </Label>
+            </div>
           </div>
         </Card>
       ))}
