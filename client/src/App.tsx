@@ -12,13 +12,14 @@ import PaymentSuccess from "@/pages/payment-success";
 import DevPage from "@/pages/dev";
 import Editor from "@/pages/editor";
 import Admin from "@/pages/admin";
+import ResetPassword from "@/pages/reset-password";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Landing} />
       <Route path="/app" component={Home} />
-      <Route path="/reset-password" component={Home} />
+      <Route path="/reset-password" component={ResetPassword} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/profile" component={Profile} />
       <Route path="/payment-success" component={PaymentSuccess} />

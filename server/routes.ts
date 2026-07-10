@@ -9,6 +9,7 @@ import path from "path";
 import crypto from "crypto";
 import { URL } from "url";
 import bcrypt from "bcrypt";
+import { sendPasswordResetEmail } from "./email";
 
 const YM_NOTIFY_SECRET = process.env.YOOMONEY_NOTIFICATION_SECRET || "";
 const DEV_PROMO_CODE = process.env.DEV_PROMO_CODE || "DEV100";
@@ -1473,19 +1474,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
     try {
       const { email } = req.body as { email: string };
+      const normalizedEmail = email?.trim().toLowerCase();
       const generic = { ok: true, message: "Если аккаунт с таким email существует, на него отправлена ссылка для восстановления пароля." };
-      if (!email?.trim()) return res.json(generic);
+      if (!normalizedEmail) return res.json(generic);
       const memStorage = storage as MemStorage;
-      const user = await storage.getAppUserByUsername(email.trim());
+
+      // Rate limiting: не чаще 1 раза в 5 минут на email (применяем до проверки существования аккаунта,
+      // чтобы не было возможности перебирать адреса и не нагружать SMTP).
+      if (!memStorage.canRequestPasswordReset(normalizedEmail)) {
+        return res.status(429).json({ error: "Письмо уже отправлено. Попробуйте позже." });
+      }
+      memStorage.markPasswordResetRequested(normalizedEmail);
+
+      const user = await storage.getAppUserByUsername(normalizedEmail);
       if (!user) return res.json(generic); // не раскрываем существование аккаунта
+
       const token = memStorage.createPasswordResetToken(user.email);
       const resetUrl = `${req.protocol}://${req.get("host")}/reset-password?token=${encodeURIComponent(token)}`;
-      // Реальный email-провайдер не подключён — ссылка выводится в серверный лог для ручной доставки/тестирования.
-      console.log(`[auth/forgot-password] Ссылка для восстановления пароля (${user.email}): ${resetUrl}`);
+
+      // Отправляем письмо через SMTP Beget (noreply@kardomatik.ru)
+      await sendPasswordResetEmail({ to: user.email, resetUrl });
+
+      console.log(`[auth/forgot-password] Письмо отправлено (${user.email})`);
       res.json(generic);
     } catch (err: any) {
       console.error("[auth/forgot-password] error:", err);
       res.status(500).json({ error: "Ошибка запроса восстановления пароля" });
+    }
+  });
+
+  // GET /api/auth/reset-password/validate?token=... — проверяет валидность ссылки
+  // перед отображением формы нового пароля.
+  app.get("/api/auth/reset-password/validate", (req: Request, res: Response) => {
+    try {
+      const token = req.query.token as string;
+      const memStorage = storage as MemStorage;
+      const email = token ? memStorage.peekPasswordResetToken(token) : null;
+      res.json({ valid: !!email });
+    } catch (err: any) {
+      console.error("[auth/reset-password/validate] error:", err);
+      res.status(500).json({ error: "Ошибка проверки ссылки" });
     }
   });
 

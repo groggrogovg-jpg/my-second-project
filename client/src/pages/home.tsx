@@ -74,13 +74,12 @@ export default function Home() {
   const starsBalance = authUser?.starsBalance ?? 0;
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot" | "reset">("login");
+  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot">("login");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
-  const [resetToken, setResetToken] = useState<string | null>(null);
   const [isTrialGeneration, setIsTrialGeneration] = useState(false);
   const [warningModalOpen, setWarningModalOpen] = useState(false);
 
@@ -119,24 +118,12 @@ export default function Home() {
       .finally(() => setSessionChecked(true));
   }, []);
 
-  // Если пользователь пришёл по ссылке восстановления пароля — открываем модалку сброса
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("resetToken") || params.get("token");
-    if (token) {
-      setResetToken(token);
-      setAuthMode("reset");
-      setAuthModalOpen(true);
-    }
-  }, []);
-
   const closeAuthModal = () => {
     setAuthModalOpen(false);
     setAuthError("");
     setAuthMessage("");
     setAuthEmail("");
     setAuthPassword("");
-    setResetToken(null);
     if (window.location.search) {
       window.history.replaceState({}, "", window.location.pathname);
     }
@@ -163,36 +150,8 @@ export default function Home() {
     }
   };
 
-  const handleResetPassword = async () => {
-    if (!resetToken || !authPassword) return;
-    setAuthError("");
-    setAuthMessage("");
-    setAuthLoading(true);
-    try {
-      const res = await fetch("/api/auth/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: resetToken, password: authPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setAuthError(data.error || "Ошибка");
-        return;
-      }
-      setAuthMessage("Пароль изменён. Теперь вы можете войти.");
-      setAuthMode("login");
-      setAuthPassword("");
-      setResetToken(null);
-    } catch {
-      setAuthError("Ошибка соединения");
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   const handleAuthSubmit = async () => {
     if (authMode === "forgot") return handleForgotPassword();
-    if (authMode === "reset") return handleResetPassword();
     const email = authEmail.trim();
     if (!email || !authPassword) return;
     setAuthError("");
@@ -534,8 +493,7 @@ export default function Home() {
               <h2 className="font-bold text-lg">
                 {authMode === "login" ? "Войти в аккаунт"
                   : authMode === "register" ? "Регистрация"
-                  : authMode === "forgot" ? "Восстановление пароля"
-                  : "Новый пароль"}
+                  : "Восстановление пароля"}
               </h2>
               <button onClick={closeAuthModal} className="text-muted-foreground hover:text-foreground">
                 <X className="w-4 h-4" />
@@ -585,21 +543,6 @@ export default function Home() {
               </div>
             )}
 
-            {authMode === "reset" && (
-              <div className="space-y-2">
-                <input
-                  type="password"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleAuthSubmit(); }}
-                  placeholder="Новый пароль (минимум 6 символов)"
-                  className="w-full h-10 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  autoFocus
-                  data-testid="input-reset-password"
-                />
-              </div>
-            )}
-
             {authError && (
               <p className="text-xs text-destructive bg-destructive/10 rounded-md px-3 py-2">{authError}</p>
             )}
@@ -612,15 +555,14 @@ export default function Home() {
               onClick={handleAuthSubmit}
               disabled={
                 authLoading ||
-                (authMode === "reset" ? !authPassword : !authEmail.trim() || (authMode !== "forgot" && !authPassword))
+                !authEmail.trim() || (authMode !== "forgot" && !authPassword)
               }
               data-testid="button-auth-submit"
             >
               {authLoading ? "Загрузка..." :
                 authMode === "login" ? "Войти" :
                 authMode === "register" ? "Создать аккаунт" :
-                authMode === "forgot" ? "Отправить ссылку" :
-                "Сохранить пароль"}
+                "Отправить ссылку"}
             </Button>
 
             {authMode === "login" && (

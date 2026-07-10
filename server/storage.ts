@@ -1,5 +1,5 @@
 import { type User, type InsertUser, type Generation, type InsertGeneration } from "@shared/schema";
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 
 // Полный аккаунт пользователя на сервере (расширяет User)
 // Примечание: username хранит адрес email — единственный идентификатор аккаунта.
@@ -148,7 +148,11 @@ export class MemStorage implements IStorage {
   private adminResetTokens: Map<string, Date>;
   adminOverrideCode: string | null;
   // Токены восстановления пароля обычных пользователей (не в IStorage — деталь реализации)
-  private passwordResetTokens: Map<string, { email: string; expiresAt: Date }>;
+  // Ключ — SHA-256 хеш токена, значение — { email, expiresAt, used }.
+  // Сам токен никогда не хранится в памяти, только его хеш.
+  private passwordResetTokens: Map<string, { email: string; expiresAt: Date; used: boolean }>;
+  // Rate limiting: email → время последнего запроса на восстановление пароля
+  private passwordResetRateLimit: Map<string, Date>;
 
   constructor() {
     this.users = new Map();
@@ -162,31 +166,55 @@ export class MemStorage implements IStorage {
     this.adminResetTokens = new Map();
     this.adminOverrideCode = null;
     this.passwordResetTokens = new Map();
+    this.passwordResetRateLimit = new Map();
+  }
+
+  private hashToken(token: string): string {
+    return createHash("sha256").update(token).digest("hex");
   }
 
   createPasswordResetToken(email: string): string {
-    const token = randomUUID();
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 минут
-    this.passwordResetTokens.set(token, { email: email.toLowerCase(), expiresAt });
-    return token;
+    const rawToken = randomUUID();
+    const tokenHash = this.hashToken(rawToken);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 час
+    this.passwordResetTokens.set(tokenHash, { email: email.toLowerCase(), expiresAt, used: false });
+    return rawToken;
   }
 
-  // Возвращает email, если токен валиден и не истёк, иначе null. Не удаляет токен.
+  // Проверяет, можно ли отправить повторное письмо: не чаще 1 раза в 5 минут на email.
+  canRequestPasswordReset(email: string): boolean {
+    const normalized = email.toLowerCase();
+    const last = this.passwordResetRateLimit.get(normalized);
+    if (!last) return true;
+    return Date.now() - last.getTime() >= 5 * 60 * 1000;
+  }
+
+  markPasswordResetRequested(email: string): void {
+    this.passwordResetRateLimit.set(email.toLowerCase(), new Date());
+  }
+
+  // Возвращает email, если токен валиден, не истёк и не использован, иначе null.
   peekPasswordResetToken(token: string): string | null {
-    const entry = this.passwordResetTokens.get(token);
+    const tokenHash = this.hashToken(token);
+    const entry = this.passwordResetTokens.get(tokenHash);
     if (!entry) return null;
-    if (new Date() > entry.expiresAt) {
-      this.passwordResetTokens.delete(token);
+    if (entry.used || new Date() > entry.expiresAt) {
+      this.passwordResetTokens.delete(tokenHash);
       return null;
     }
     return entry.email;
   }
 
   consumePasswordResetToken(token: string): string | null {
-    const email = this.peekPasswordResetToken(token);
-    if (!email) return null;
-    this.passwordResetTokens.delete(token);
-    return email;
+    const tokenHash = this.hashToken(token);
+    const entry = this.passwordResetTokens.get(tokenHash);
+    if (!entry) return null;
+    if (entry.used || new Date() > entry.expiresAt) {
+      this.passwordResetTokens.delete(tokenHash);
+      return null;
+    }
+    entry.used = true;
+    return entry.email;
   }
 
   createAdminResetToken(): string {
