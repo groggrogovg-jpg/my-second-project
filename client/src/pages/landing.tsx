@@ -417,8 +417,8 @@ export default function Landing() {
               {
                 icon: <Mail className="w-6 h-6 text-primary" />,
                 label: "Email",
-                value: "hello@kardomatik.ru",
-                href: "mailto:hello@kardomatik.ru",
+                value: "support@kardomatik.ru",
+                href: "mailto:support@kardomatik.ru",
                 desc: "Для общих вопросов",
               },
               {
