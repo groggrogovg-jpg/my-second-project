@@ -687,7 +687,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!url) return res.status(400).json({ error: "url required" });
     try {
       const response = await axios.get(url, { responseType: "arraybuffer", timeout: 15000 });
-      const contentType = response.headers["content-type"] || "image/png";
+      const contentType = String(response.headers["content-type"] || "image/png");
       res.set("Content-Type", contentType);
       res.set("Cache-Control", "public, max-age=86400");
       res.send(Buffer.from(response.data));
@@ -776,7 +776,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.post("/api/admin/users/:username/balance", adminOnly, async (req: Request, res: Response) => {
-    const { username } = req.params;
+    const username = req.params.username as string;
     const { nano2Delta, proDelta } = req.body as { nano2Delta?: number; proDelta?: number };
     if (!nano2Delta && !proDelta) {
       return res.status(400).json({ error: "nano2Delta или proDelta обязательны" });
@@ -797,14 +797,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.post("/api/admin/users/:username/reset-balance", adminOnly, async (req: Request, res: Response) => {
-    const { username } = req.params;
+    const username = req.params.username as string;
     await storage.addPendingCredits(username, -99999, -99999);
     console.log(`[admin] balance reset pending for ${username}`);
     return res.json({ ok: true });
   });
 
   app.post("/api/admin/users/:username/reset-password", adminOnly, async (req: Request, res: Response) => {
-    const { username } = req.params;
+    const username = req.params.username as string;
     const chars = "abcdefghijkmnpqrstuvwxyz23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
     const newPassword = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
     const bcrypt = await import("bcrypt");
@@ -1117,13 +1117,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.get("/api/support/chats/:chatId/messages", adminOnly, async (req: Request, res: Response) => {
-    const { chatId } = req.params;
+    const chatId = req.params.chatId as string;
     const messages = await storage.getSupportMessages(chatId);
     res.json(messages);
   });
 
   app.post("/api/support/chats/:chatId/reply", adminOnly, async (req: Request, res: Response) => {
-    const { chatId } = req.params;
+    const chatId = req.params.chatId as string;
     const { message } = req.body as { message?: string };
     if (!message || !message.trim()) {
       return res.status(400).json({ error: "Сообщение обязательно" });
@@ -1149,13 +1149,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.post("/api/support/chats/:chatId/read", adminOnly, async (req: Request, res: Response) => {
-    const { chatId } = req.params;
+    const chatId = req.params.chatId as string;
     await storage.markMessagesRead(chatId);
     res.json({ ok: true });
   });
 
   app.post("/api/support/chats/:chatId/status", adminOnly, async (req: Request, res: Response) => {
-    const { chatId } = req.params;
+    const chatId = req.params.chatId as string;
     const { status } = req.body as { status?: "open" | "closed" };
     if (!status || !["open", "closed"].includes(status)) {
       return res.status(400).json({ error: "status должен быть open или closed" });
@@ -1207,7 +1207,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             // Скачиваем по внешнему URL
             const resp = await axios.get(originalUrl, { responseType: "arraybuffer", timeout: 15000 });
             imageBuffer = Buffer.from(resp.data);
-            mimeType = resp.headers["content-type"] || "image/jpeg";
+            mimeType = String(resp.headers["content-type"] || "image/jpeg");
           }
 
           const prompt = buildRegeneratePrompt(analysis, generation.aspectRatio || "1:1");
@@ -1267,7 +1267,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       } else {
         const resp = await axios.get(imageUrl, { responseType: "arraybuffer", timeout: 15000 });
         imageBuffer = Buffer.from(resp.data);
-        mimeType = resp.headers["content-type"] || "image/jpeg";
+        mimeType = String(resp.headers["content-type"] || "image/jpeg");
       }
 
       const base64 = imageBuffer.toString("base64");
@@ -1344,7 +1344,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Скачиваем по внешнему URL
         const resp = await axios.get(imageUrl, { responseType: "arraybuffer", timeout: 15000 });
         imageBuffer = Buffer.from(resp.data);
-        mimeType = resp.headers["content-type"] || "image/jpeg";
+        mimeType = String(resp.headers["content-type"] || "image/jpeg");
       }
 
       const fullPrompt = `Replace only the background of this product image. Keep the product itself exactly as is — preserve all its details, shape, lighting, and shadows. The new background should be: ${prompt}. Do not alter the product in any way. Output a clean product photo with the requested background only.`;

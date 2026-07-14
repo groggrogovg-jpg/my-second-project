@@ -471,10 +471,6 @@ export class MemStorage implements IStorage {
 
   async recordPayment(payment: Omit<PaymentRecord, "confirmed" | "credited" | "createdAt">): Promise<PaymentRecord> {
     const record: PaymentRecord = {
-      cardsIncluded: 0,
-      modelType: "",
-      username: "",
-      userId: null,
       ...payment,
       confirmed: false,
       credited: false,
