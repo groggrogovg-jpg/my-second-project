@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { Sparkles, ArrowRight, Upload, Settings2, ImageDown, CheckCircle2, Layers, Shirt, Wand2, Mail, MessageCircle, Phone, Plus, ArrowRight as ArrowRightSmall, Star } from "lucide-react";
+import FAQ from "@/components/FAQ";
 
 const TESTIMONIALS = [
   {
@@ -386,6 +387,8 @@ export default function Landing() {
           </div>
         </section>
 
+        <FAQ />
+
         <section className="bg-gradient-to-br from-violet-600 via-blue-600 to-cyan-500 py-10 sm:py-16">
           <div className="max-w-2xl mx-auto px-3 sm:px-6 text-center">
             <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">
@@ -456,6 +459,7 @@ export default function Landing() {
             ))}
           </div>
         </section>
+
       </main>
 
       <footer className="border-t border-border py-6">

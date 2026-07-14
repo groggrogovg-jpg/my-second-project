@@ -112,11 +112,85 @@ export default function Pricing() {
 
         <div className="mt-6 text-center">
           <p className="text-xs text-muted-foreground">
-            Оплата будет доступна в ближайшее время. По вопросам:{" "}
+            💳 <span className="font-medium text-foreground">Оплата работает!</span> Принимаем банковские карты, SberPay и ЮMoney. По вопросам:{" "}
             <a href="mailto:hello@kardomatik.ru" className="text-primary hover:underline">
               hello@kardomatik.ru
             </a>
           </p>
+        </div>
+
+        <div className="mt-10 rounded-2xl border border-border bg-muted/30 p-6 sm:p-8 space-y-8">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-2">Почему Nano Banana Pro?</h2>
+            <p className="text-sm text-muted-foreground">
+              Nano Banana Pro — наша флагманская диффузионная модель, обученная специально на изображениях товаров для российских маркетплейсов. Она выдаёт результат заметно выше среднего по рынку.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-foreground mb-3">Что умеет</h3>
+            <ul className="space-y-2">
+              {[
+                "Генерирует карточки с разрешением 2K — чёткие, без артефактов",
+                "Удаляет фон и заменяет его на студийный или тематический",
+                "Добавляет инфографику и продающие элементы прямо в изображение",
+                "Сохраняет текстуру и цвет материала без потерь",
+                "Поддерживает любые категории товаров: одежда, электроника, еда, бьюти",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-2 text-sm text-muted-foreground">
+                  <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-foreground mb-3">Чем отличается от базовой модели</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 pr-4 font-medium text-muted-foreground w-1/3">Параметр</th>
+                    <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Nano Banana 2</th>
+                    <th className="text-left py-2 font-medium text-primary">Nano Banana Pro</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {[
+                    ["Разрешение", "1K (1024 px)", "2K (2048 px)"],
+                    ["Детализация текстур", "Базовая", "Высокая"],
+                    ["Инфографика в карточке", "—", "✓"],
+                    ["Качество фона", "Стандартное", "Студийное"],
+                    ["Цена за карточку", "от 35 ₽", "от 55 ₽"],
+                  ].map(([param, nano2, pro]) => (
+                    <tr key={param} className="hover:bg-muted/30 transition-colors">
+                      <td className="py-2.5 pr-4 text-muted-foreground font-medium">{param}</td>
+                      <td className="py-2.5 pr-4 text-muted-foreground">{nano2}</td>
+                      <td className="py-2.5 text-foreground font-medium">{pro}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-foreground mb-3">Почему это стоит своих денег</h3>
+            <ul className="space-y-2">
+              {[
+                "Профессиональный фотограф за одну карточку берёт от 500 ₽ — Pro стоит в 10 раз дешевле",
+                "Дизайнер тратит часы на ретушь; ИИ выдаёт результат за 2 минуты",
+                "Красивая карточка повышает CTR и конверсию — окупается с первых продаж",
+                "Пакеты не сгорают: купите один раз и используйте в удобном темпе",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-2 text-sm text-muted-foreground">
+                  <Check className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </main>
     </div>
