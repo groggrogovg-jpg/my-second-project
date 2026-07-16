@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Sparkles, ArrowRight, Upload, Settings2, ImageDown, CheckCircle2, Layers, Shirt, Wand2, Mail, MessageCircle, Phone, Plus, ArrowRight as ArrowRightSmall, Star } from "lucide-react";
+import { Sparkles, ArrowRight, Upload, Settings2, ImageDown, CheckCircle2, Layers, Shirt, Wand2, Mail, MessageCircle, Plus, ArrowRight as ArrowRightSmall, Star } from "lucide-react";
 import FAQ from "@/components/FAQ";
 
 const TESTIMONIALS = [
@@ -427,13 +427,6 @@ export default function Landing() {
                 value: "@KardoMatik_bot",
                 href: "https://t.me/KardoMatik_bot",
                 desc: "Быстрые ответы",
-              },
-              {
-                icon: <Phone className="w-6 h-6 text-emerald-500" />,
-                label: "WhatsApp",
-                value: "+7 (999) 000-00-00",
-                href: "https://wa.me/79990000000",
-                desc: "Звонки и сообщения",
               },
             ].map((contact) => (
               <a
