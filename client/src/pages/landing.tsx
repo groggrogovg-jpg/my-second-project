@@ -395,7 +395,7 @@ export default function Landing() {
               Попробуйте прямо сейчас
             </h2>
             <p className="text-white/80 mb-8 text-base">
-              3 карточки бесплатно, при регистрации
+              Бесплатно 2 карточки и одна примерка одежды
             </p>
             <Link href="/app">
               <button
