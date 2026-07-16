@@ -74,7 +74,6 @@ export default function Landing() {
           </nav>
         </div>
       </header>
-
       <main className="flex-1">
         <section className="max-w-6xl mx-auto px-3 sm:px-6 pt-12 sm:pt-20 pb-10 sm:pb-16 text-center">
           <div className="inline-flex items-center gap-1.5 bg-primary/10 text-primary text-xs font-medium px-3 py-1.5 rounded-full mb-8 border border-primary/20">
@@ -394,9 +393,7 @@ export default function Landing() {
             <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">
               Попробуйте прямо сейчас
             </h2>
-            <p className="text-white/80 mb-8 text-base">
-              5 карточек бесплатно — без регистрации и карты
-            </p>
+            <p className="text-white/80 mb-8 text-base">2 карточки бесплатно и одна примерка одежды на модели</p>
             <Link href="/app">
               <button
                 className="inline-flex items-center gap-2 bg-white text-violet-700 px-8 py-3.5 rounded-xl text-base font-bold hover:bg-white/90 transition-all shadow-lg hover:-translate-y-0.5"
@@ -461,7 +458,6 @@ export default function Landing() {
         </section>
 
       </main>
-
       <footer className="border-t border-border py-6">
         <div className="max-w-6xl mx-auto px-3 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
