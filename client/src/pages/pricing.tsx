@@ -33,7 +33,6 @@ export default function Pricing() {
           </div>
         </div>
       </header>
-
       <main className="max-w-5xl mx-auto px-3 sm:px-6 py-8 sm:py-12">
         <div className="text-center mb-6 sm:mb-10">
           <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-xs font-medium mb-3 sm:mb-4">
@@ -47,7 +46,7 @@ export default function Pricing() {
             Покупайте карточки пакетами — чем больше, тем дешевле. Без подписок, без автосписаний.
           </p>
           <div className="inline-flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-2.5 text-sm">
-            <span className="text-muted-foreground">5 карточек бесплатно при регистрации</span>
+            <span className="text-muted-foreground">3 карточек бесплатно при регистрации</span>
             <Badge variant="secondary" className="text-xs">Пробный режим</Badge>
           </div>
         </div>
