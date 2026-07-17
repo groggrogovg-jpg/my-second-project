@@ -113,7 +113,7 @@ export default function Landing() {
           </div>
 
           <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground flex-wrap">
-            {["5 карточек бесплатно", "Без навыков дизайна", "Готово за 2 минуты"].map((label) => (
+            {["3 карточки бесплатно", "Без навыков дизайна", "Готово за 2 минуты"].map((label) => (
               <span key={label} className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
                 {label}
