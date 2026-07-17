@@ -103,6 +103,18 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
     }
   };
 
+  // Блокировка сочетаний клавиш для сохранения в пробном режиме.
+  useEffect(() => {
+    if (!isTrial) return;
+    const blockKeys = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener("keydown", blockKeys);
+    return () => document.removeEventListener("keydown", blockKeys);
+  }, [isTrial]);
+
   useEffect(() => {
     if (!isTrial || !mediaUrl || isVideo) return;
     setCanvasReady(false);
@@ -115,24 +127,10 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
       canvas.width = img.naturalWidth || 1024;
       canvas.height = img.naturalHeight || 1024;
       ctx.drawImage(img, 0, 0);
-      const size = Math.min(canvas.width, canvas.height);
-      const fontSize = Math.round(size * 0.075);
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate(-Math.PI / 6);
-      ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-      ctx.fillStyle = "rgba(255, 255, 255, 0.38)";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
-      ctx.shadowBlur = 6;
-      ctx.fillText("КардоМатик", 0, 0);
-      ctx.restore();
       setCanvasReady(true);
     };
     img.onerror = () => {
       setCanvasReady(false);
-      // Fallback: show plain image with CSS overlay if canvas fails
     };
     img.src = `/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`;
   }, [isTrial, mediaUrl, isVideo]);
@@ -218,7 +216,12 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
           </div>
 
           <div className="p-4">
-            <div className="relative rounded-lg overflow-hidden bg-muted flex items-center justify-center" style={{ minHeight: 320 }}>
+            <div
+              className="relative rounded-lg overflow-hidden bg-muted flex items-center justify-center"
+              style={{ minHeight: 320, userSelect: "none" }}
+              onContextMenu={isTrial ? (e) => e.preventDefault() : undefined}
+              onDragStart={isTrial ? (e) => e.preventDefault() : undefined}
+            >
               {mediaUrl ? (
                 isVideo ? (
                   <video

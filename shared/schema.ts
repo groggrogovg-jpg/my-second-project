@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -24,6 +24,7 @@ export const generations = pgTable("generations", {
   aspectRatio: text("aspect_ratio").default("1:1"),
   notes: text("notes"),
   generationType: text("generation_type").default("card"),
+  usedTrial: boolean("used_trial").default(false),
   expiresAt: timestamp("expires_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });

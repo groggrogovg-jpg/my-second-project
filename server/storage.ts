@@ -408,6 +408,7 @@ export class MemStorage implements IStorage {
       aspectRatio: gen.aspectRatio ?? "1:1",
       notes: gen.notes ?? null,
       generationType: (gen as any).generationType ?? "card",
+      usedTrial: gen.usedTrial ?? false,
       expiresAt: gen.expiresAt ?? null,
       createdAt: new Date(),
     };

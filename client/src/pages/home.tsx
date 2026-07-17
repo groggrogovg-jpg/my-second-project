@@ -464,6 +464,7 @@ export default function Home() {
     setActiveGenerationId(gen.id);
     setSelectedFiles([]);
     setPreviewUrls([]);
+    setIsTrialGeneration(gen.usedTrial || false);
   };
 
   const formatToAspect: Record<FormatId, AspectRatioId> = {
@@ -739,7 +740,7 @@ export default function Home() {
               onAnimateVideo={handleAnimateVideo}
               animatingVideo={animatingVideo}
               onRegenerationComplete={handleRegenerationComplete}
-              isTrial={isTrialGeneration || !isAuth}
+              isTrial={isTrialGeneration || !isAuth || activeGeneration?.usedTrial || false}
             />
 
             {generations.length > 0 && (

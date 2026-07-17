@@ -2,7 +2,21 @@ import express from "express";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage, MemStorage, type TrialFeature } from "./storage";
+import { applyTrialWatermark, bufferToDataUrl } from "./watermark";
 import multer from "multer";
+
+/**
+ * Скачивает итоговое изображение с Polza.ai и, если это пробная генерация,
+ * накладывает серверный водяной знак. Для trial-режима возвращается data-URL,
+ * чтобы исходное изображение не было доступно по удалённому URL.
+ */
+async function processResultImage(remoteUrl: string, isTrial: boolean): Promise<string> {
+  const response = await axios.get(remoteUrl, { responseType: "arraybuffer", timeout: 15000 });
+  const buffer = Buffer.from(response.data);
+  if (!isTrial) return remoteUrl;
+  const watermarked = await applyTrialWatermark(buffer);
+  return bufferToDataUrl(watermarked, "image/png");
+}
 import OpenAI from "openai";
 import axios from "axios";
 import path from "path";
@@ -527,9 +541,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           console.log(`[generate] ✓ Status → generating, calling Polza.ai...`);
 
           const resultUrl = await generateCardWithPolza(imageBuffer, filename, mimeType, analysis.prompt, aspectRatio, model, noText);
-          await storage.updateGeneration(generation.id, { status: "done", resultImageUrl: resultUrl });
+          const finalUrl = await processResultImage(resultUrl, entitlement.usedTrial);
+          await storage.updateGeneration(generation.id, { status: "done", resultImageUrl: finalUrl, usedTrial: entitlement.usedTrial });
           if (username) storage.incrementUserGenerations(username).catch(() => {});
-          console.log(`[generate] ✓ Polza.ai done id=${generation.id} url=${resultUrl.substring(0, 80)}...`);
+          console.log(`[generate] ✓ Polza.ai done id=${generation.id} trial=${entitlement.usedTrial} url=${finalUrl.substring(0, 80)}...`);
 
         } catch (err: any) {
           const axiosDetail = err?.response?.data ? ` [${JSON.stringify(err.response.data)}]` : "";
@@ -645,8 +660,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             personFile.buffer, personFile.originalname, personFile.mimetype,
             garmentFiles,
           );
-          await storage.updateGeneration(generation.id, { status: "done", resultImageUrl: resultUrl });
-          console.log(`[generate-tryon] ✓ Polza.ai done id=${generation.id} url=${resultUrl.substring(0, 80)}...`);
+          const finalUrl = await processResultImage(resultUrl, entitlement.usedTrial);
+          await storage.updateGeneration(generation.id, { status: "done", resultImageUrl: finalUrl, usedTrial: entitlement.usedTrial });
+          console.log(`[generate-tryon] ✓ Polza.ai done id=${generation.id} trial=${entitlement.usedTrial} url=${finalUrl.substring(0, 80)}...`);
         } catch (err: any) {
           const axiosDetail = err?.response?.data ? ` [${JSON.stringify(err.response.data)}]` : "";
           console.error(`[generate-tryon] ✗ ERROR id=${generation.id}: ${err.message}${axiosDetail}`);
@@ -686,6 +702,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const url = req.query.url as string;
     if (!url) return res.status(400).json({ error: "url required" });
     try {
+      // Поддержка data-URL для watermarked trial-изображений, сгенерированных на сервере.
+      if (url.startsWith("data:")) {
+        const match = url.match(/^data:([^;]+);base64,(.+)$/);
+        if (!match) return res.status(400).json({ error: "Invalid data URL" });
+        const contentType = match[1] || "image/png";
+        const buffer = Buffer.from(match[2], "base64");
+        res.set("Content-Type", contentType);
+        res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+        res.send(buffer);
+        return;
+      }
       const response = await axios.get(url, { responseType: "arraybuffer", timeout: 15000 });
       const contentType = String(response.headers["content-type"] || "image/png");
       res.set("Content-Type", contentType);
@@ -1221,11 +1248,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             generation.model || "nano-banana-pro",
           );
 
+          const finalUrl = await processResultImage(resultUrl, generation.usedTrial || false);
           await storage.updateGeneration(generationId, {
             status: "done",
-            resultImageUrl: resultUrl,
+            resultImageUrl: finalUrl,
           });
-          console.log(`[regenerate] ✓ DONE id=${generationId} url=${resultUrl.substring(0, 80)}...`);
+          console.log(`[regenerate] ✓ DONE id=${generationId} trial=${generation.usedTrial || false} url=${finalUrl.substring(0, 80)}...`);
         } catch (err: any) {
           const axiosDetail = err?.response?.data ? ` [${JSON.stringify(err.response.data)}]` : "";
           const message = err.message || "Неизвестная ошибка";
@@ -1314,8 +1342,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Проверяем звёзды для авторизованных пользователей
       const userId = req.session?.userId;
       const cost = 1; // 1 звезда за смену фона
+      let user = null;
       if (userId) {
-        const user = await storage.getAppUserById(userId);
+        user = await storage.getAppUserById(userId);
         if (!user) return res.status(401).json({ error: "Пользователь не найден" });
         if (user.starsBalance < cost) {
           return res.status(403).json({ error: "Недостаточно звёзд. Пополните баланс, купив пакет карточек." });
@@ -1360,8 +1389,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         images: [{ buffer: imageBuffer, mimeType }],
       });
 
-      console.log(`[edit-background] ✓ DONE url=${resultUrl.substring(0, 80)}...`);
-      res.json({ url: resultUrl, status: "done" });
+      const isTrialEdit = !user || (user.nano2Balance === 0 && user.proBalance === 0 && (user.trialNano2Used || user.trialProUsed || user.trialTryonUsed));
+      const finalUrl = await processResultImage(resultUrl, isTrialEdit);
+      console.log(`[edit-background] ✓ DONE trial=${isTrialEdit} url=${finalUrl.substring(0, 80)}...`);
+      res.json({ url: finalUrl, status: "done" });
     } catch (err: any) {
       const axiosDetail = err?.response?.data ? ` [${JSON.stringify(err.response.data)}]` : "";
       const message = err.message || "Неизвестная ошибка";
