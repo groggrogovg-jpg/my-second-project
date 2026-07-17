@@ -3,6 +3,7 @@ import { Stage, Layer, Image as KonvaImage, Text, Group, Rect, Transformer } fro
 import Konva from "konva";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { X, Download, Type, Trash2, ChevronDown, ChevronUp, Check, Minus, Plus, Sparkles, Loader2, Image as ImageIcon, Star } from "lucide-react";
 import { MODELS, BG_EDIT_STAR_COST, type ModelId } from "@shared/schema";
 
@@ -47,9 +48,10 @@ interface Props {
   onClose: () => void;
   stars: number;
   onStarsChange?: (n: number) => void;
+  isTrial?: boolean;
 }
 
-export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }: Props) {
+export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, isTrial = false }: Props) {
   const [isAuth, setIsAuth] = useState(false);
   const [hasBalance, setHasBalance] = useState(false);
   useEffect(() => {
@@ -320,7 +322,14 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
     <>
     <div className="fixed inset-0 z-50 bg-background flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background flex-shrink-0">
-        <span className="font-semibold text-sm text-foreground">Редактор изображения</span>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-sm text-foreground">Редактор изображения</span>
+          {isTrial && (
+            <Badge variant="outline" className="text-xs border-amber-400 text-amber-600 bg-amber-500/10">
+              Пробная версия
+            </Badge>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => setBgEditorOpen(true)} disabled={bgGenerating}>
             <ImageIcon className="w-3.5 h-3.5 mr-1.5" />
@@ -329,8 +338,8 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
           <Button
             size="sm"
             onClick={handleExport}
-            disabled={saving || !isAuth || !hasBalance}
-            title={!isAuth ? "Скачивание доступно только после авторизации" : !hasBalance ? "Скачивание доступно только после покупки пакета карточек" : undefined}
+            disabled={saving || !isAuth || !hasBalance || isTrial}
+            title={!isAuth ? "Скачивание доступно только после авторизации" : !hasBalance ? "Скачивание доступно только после покупки пакета карточек" : isTrial ? "Скачивание недоступно в пробной версии" : undefined}
           >
             <Download className="w-3.5 h-3.5 mr-1.5" />
             {saving ? "Сохраняем..." : "Скачать"}
@@ -343,7 +352,13 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 overflow-auto p-3 flex items-start justify-center" ref={containerRef}>
+        <div
+          className="flex-1 overflow-auto p-3 flex items-start justify-center"
+          ref={containerRef}
+          onContextMenu={isTrial ? (e) => e.preventDefault() : undefined}
+          onDragStart={isTrial ? (e) => e.preventDefault() : undefined}
+          style={{ userSelect: "none" }}
+        >
           <div style={{ position: "relative", width: stageSize.width, height: stageSize.height }}>
             {loading ? (
               <div className="w-full h-full flex items-center justify-center bg-muted rounded-lg text-muted-foreground text-sm">
@@ -392,6 +407,36 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange }:
                       setElements(prev => prev.map(e => e.id === selectedId ? { ...e, fontSize: newFontSize, x: node.x(), y: node.y() } : e));
                     }}
                   />
+                  {isTrial && imageEl && (
+                    <Group listening={false}>
+                      {Array.from({ length: 5 }).flatMap((_, row) =>
+                        Array.from({ length: 4 }).map((__, col) => {
+                          const cols = 4;
+                          const rows = 5;
+                          const spacingX = stageSize.width / (cols - 0.5);
+                          const spacingY = stageSize.height / (rows - 0.5);
+                          const x = col * spacingX + ((row % 2) * spacingX * 0.5) - spacingX * 0.25;
+                          const y = row * spacingY - spacingY * 0.25;
+                          return (
+                            <Text
+                              key={`wm-${row}-${col}`}
+                              x={x}
+                              y={y}
+                              text="КАРДОМАТИК · TRIAL"
+                              fontSize={Math.max(12, Math.round(stageSize.width * 0.035))}
+                              fontStyle="bold"
+                              fill="rgba(255, 255, 255, 0.35)"
+                              shadowColor="rgba(0, 0, 0, 0.35)"
+                              shadowBlur={4}
+                              rotation={-30}
+                              align="center"
+                              verticalAlign="middle"
+                            />
+                          );
+                        })
+                      )}
+                    </Group>
+                  )}
                 </Layer>
               </Stage>
             ) : (

@@ -142,7 +142,7 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
   return (
     <>
       {editorOpen && mediaUrl && (
-        <ImageEditor imageUrl={mediaUrl} onClose={() => setEditorOpen(false)} stars={0} onStarsChange={() => {}} />
+        <ImageEditor imageUrl={mediaUrl} onClose={() => setEditorOpen(false)} stars={0} onStarsChange={() => {}} isTrial={isTrial} />
       )}
       {textEditorOpen && analysis && (
         <TextEditor
