@@ -323,7 +323,7 @@ export default function Landing() {
                 color: "bg-sky-500/10 border-sky-500/20",
                 title: "Примерка одежды",
                 desc: "Виртуально наденьте одежду на модель — загрузите фото человека и одежды, ИИ сделает профессиональную фотосессию без съёмки",
-                badge: "Скоро",
+                badge: "Новинка",
               },
               {
                 icon: <Wand2 className="w-7 h-7 text-emerald-500" />,
