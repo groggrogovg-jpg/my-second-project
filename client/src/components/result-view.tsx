@@ -132,7 +132,9 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
     img.onerror = () => {
       setCanvasReady(false);
     };
-    img.src = `/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`;
+    // data-URL уже содержит изображение; проксировать через GET-параметр
+    // нельзя — длина URL превысит лимиты и браузер не загрузит картинку.
+    img.src = mediaUrl.startsWith("data:") ? mediaUrl : `/api/proxy-image?url=${encodeURIComponent(mediaUrl)}`;
   }, [isTrial, mediaUrl, isVideo]);
 
   const headerTitle = isVideo ? "Видео готово!" : isTryon ? "Примерка готова!" : "Карточка готова!";
