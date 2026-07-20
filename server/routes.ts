@@ -1414,6 +1414,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       nano2Balance: user.nano2Balance,
       proBalance: user.proBalance,
       starsBalance: user.starsBalance,
+      nano2ExpiresAt: user.nano2Subscription.expiresAt.toISOString(),
+      proExpiresAt: user.proSubscription.expiresAt.toISOString(),
       trialNano2Used: user.trialNano2Used,
       trialProUsed: user.trialProUsed,
       trialTryonUsed: user.trialTryonUsed,

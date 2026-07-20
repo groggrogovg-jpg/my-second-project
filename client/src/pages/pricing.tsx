@@ -283,7 +283,7 @@ function PackagesGrid({
               </li>
               <li className="flex items-center gap-2 text-xs">
                 <Check className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
-                <span>Без срока действия</span>
+                <span>Действует 30 дней</span>
               </li>
             </ul>
 

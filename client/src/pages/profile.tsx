@@ -15,6 +15,7 @@ import {
   Shirt,
   MessageCircle,
 } from "lucide-react";
+import { formatSubscriptionExpiry } from "@/lib/utils";
 
 interface AuthUser {
   id: string;
@@ -22,6 +23,8 @@ interface AuthUser {
   email?: string;
   nano2Balance: number;
   proBalance: number;
+  nano2ExpiresAt: string;
+  proExpiresAt: string;
   trialNano2Used: boolean;
   trialProUsed: boolean;
   trialTryonUsed: boolean;
@@ -142,6 +145,9 @@ export default function Profile() {
               <span className="text-2xl font-bold text-foreground">{nano2}</span>
               <span className="text-xs text-muted-foreground">карточек</span>
             </div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {formatSubscriptionExpiry(authUser?.nano2ExpiresAt ?? new Date().toISOString(), nano2)}
+            </p>
             <div className="mt-3 flex gap-2">
               <Link href="/pricing">
                 <Button size="sm" variant="outline" className="w-full text-xs gap-1">
@@ -172,6 +178,9 @@ export default function Profile() {
               <span className="text-2xl font-bold text-foreground">{pro}</span>
               <span className="text-xs text-muted-foreground">карточек</span>
             </div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {formatSubscriptionExpiry(authUser?.proExpiresAt ?? new Date().toISOString(), pro)}
+            </p>
             <div className="mt-3 flex gap-2">
               <Link href="/pricing">
                 <Button size="sm" variant="outline" className="w-full text-xs gap-1">

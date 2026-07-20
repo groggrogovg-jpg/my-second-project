@@ -3,12 +3,21 @@ import { randomUUID, createHash } from "crypto";
 
 // Полный аккаунт пользователя на сервере (расширяет User)
 // Примечание: username хранит адрес email — единственный идентификатор аккаунта.
+export interface ModelSubscription {
+  cards: number;
+  expiresAt: Date;
+}
+
 export interface AppUser extends User {
   passwordHash: string;
   email: string;
   nano2Balance: number;
   proBalance: number;
   starsBalance: number;
+  // Подписки на пакеты карточек по моделям. Срок действия — 30 дней с момента покупки.
+  // При покупке нового пакета старые карточки для этой модели сгорают.
+  nano2Subscription: ModelSubscription;
+  proSubscription: ModelSubscription;
   // Независимые флаги бесплатной пробной попытки для каждой функции
   trialNano2Used: boolean;
   trialProUsed: boolean;
@@ -18,6 +27,21 @@ export interface AppUser extends User {
 }
 
 export type TrialFeature = "nano2" | "pro" | "tryon";
+
+const PACKAGE_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+
+function isExpired(expiresAt: Date): boolean {
+  return new Date().getTime() > new Date(expiresAt).getTime();
+}
+
+export function effectiveCards(sub: ModelSubscription): number {
+  return isExpired(sub.expiresAt) ? 0 : Math.max(0, sub.cards);
+}
+
+export function syncModelBalances(user: AppUser): void {
+  user.nano2Balance = effectiveCards(user.nano2Subscription);
+  user.proBalance = effectiveCards(user.proSubscription);
+}
 
 export interface PaymentRecord {
   label: string;
@@ -244,6 +268,7 @@ export class MemStorage implements IStorage {
   async createAppUser(email: string, passwordHash: string): Promise<AppUser> {
     const id = randomUUID();
     const normalizedEmail = email.trim().toLowerCase();
+    const now = new Date();
     const user: AppUser = {
       id,
       username: normalizedEmail,
@@ -253,29 +278,37 @@ export class MemStorage implements IStorage {
       nano2Balance: 0,
       proBalance: 0,
       starsBalance: 0,
+      nano2Subscription: { cards: 0, expiresAt: now },
+      proSubscription: { cards: 0, expiresAt: now },
       trialNano2Used: false,
       trialProUsed: false,
       trialTryonUsed: false,
       isDeveloper: false,
-      createdAt: new Date(),
+      createdAt: now,
     };
     this.appUsers.set(id, user);
     return user;
   }
 
   async getAppUserById(id: string): Promise<AppUser | undefined> {
-    return this.appUsers.get(id);
+    const user = this.appUsers.get(id);
+    if (user) syncModelBalances(user);
+    return user;
   }
 
   async getAppUserByUsername(username: string): Promise<AppUser | undefined> {
-    return Array.from(this.appUsers.values()).find((u) => u.username.toLowerCase() === username.toLowerCase());
+    const user = Array.from(this.appUsers.values()).find((u) => u.username.toLowerCase() === username.toLowerCase());
+    if (user) syncModelBalances(user);
+    return user;
   }
 
   async updateAppUserBalances(id: string, nano2: number, pro: number): Promise<void> {
     const user = this.appUsers.get(id);
     if (user) {
-      user.nano2Balance = Math.max(0, nano2);
-      user.proBalance = Math.max(0, pro);
+      const expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
+      user.nano2Subscription = { cards: Math.max(0, nano2), expiresAt };
+      user.proSubscription = { cards: Math.max(0, pro), expiresAt };
+      syncModelBalances(user);
     }
   }
 
@@ -289,9 +322,11 @@ export class MemStorage implements IStorage {
   async consumeEntitlement(id: string, feature: TrialFeature): Promise<{ usedTrial: boolean } | null> {
     const user = this.appUsers.get(id);
     if (!user) return null;
+    syncModelBalances(user);
     if (feature === "nano2") {
-      if (user.nano2Balance > 0) {
-        user.nano2Balance -= 1;
+      if (effectiveCards(user.nano2Subscription) > 0) {
+        user.nano2Subscription.cards -= 1;
+        syncModelBalances(user);
         return { usedTrial: false };
       }
       if (!user.trialNano2Used) {
@@ -301,8 +336,9 @@ export class MemStorage implements IStorage {
       return null;
     }
     if (feature === "pro") {
-      if (user.proBalance > 0) {
-        user.proBalance -= 1;
+      if (effectiveCards(user.proSubscription) > 0) {
+        user.proSubscription.cards -= 1;
+        syncModelBalances(user);
         return { usedTrial: false };
       }
       if (!user.trialProUsed) {
@@ -312,8 +348,9 @@ export class MemStorage implements IStorage {
       return null;
     }
     // tryon
-    if (user.nano2Balance > 0) {
-      user.nano2Balance -= 1;
+    if (effectiveCards(user.nano2Subscription) > 0) {
+      user.nano2Subscription.cards -= 1;
+      syncModelBalances(user);
       return { usedTrial: false };
     }
     if (!user.trialTryonUsed) {
@@ -332,17 +369,22 @@ export class MemStorage implements IStorage {
       else user.trialTryonUsed = false;
       return;
     }
-    if (feature === "nano2") user.nano2Balance += 1;
-    else if (feature === "pro") user.proBalance += 1;
-    else user.nano2Balance += 1;
+    if (feature === "nano2") user.nano2Subscription.cards += 1;
+    else if (feature === "pro") user.proSubscription.cards += 1;
+    else user.nano2Subscription.cards += 1;
+    syncModelBalances(user);
   }
 
   async grantDeveloperCredit(userId: string, nano2: number, pro: number): Promise<AppUser | undefined> {
     const user = this.appUsers.get(userId);
     if (!user) return undefined;
-    user.nano2Balance += nano2;
-    user.proBalance += pro;
+    const expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
+    user.nano2Subscription.cards += nano2;
+    user.nano2Subscription.expiresAt = expiresAt;
+    user.proSubscription.cards += pro;
+    user.proSubscription.expiresAt = expiresAt;
     user.isDeveloper = true;
+    syncModelBalances(user);
     return user;
   }
 
@@ -351,8 +393,10 @@ export class MemStorage implements IStorage {
       (u) => u.username.toLowerCase() === username.toLowerCase()
     );
     if (!user) return undefined;
-    if (model === "pro") user.proBalance += amount;
-    else user.nano2Balance += amount;
+    const sub = model === "pro" ? user.proSubscription : user.nano2Subscription;
+    sub.cards += amount;
+    sub.expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
+    syncModelBalances(user);
     return user;
   }
 
@@ -487,10 +531,14 @@ export class MemStorage implements IStorage {
     if (record.userId && record.userId !== userId) return null;
     const user = this.appUsers.get(userId);
     if (!user) return null;
+    syncModelBalances(user);
     if (record.cardsIncluded > 0 && record.modelType) {
-      if (record.modelType === "pro") user.proBalance += record.cardsIncluded;
-      else user.nano2Balance += record.cardsIncluded;
+      const sub = record.modelType === "pro" ? user.proSubscription : user.nano2Subscription;
+      // Новый пакет заменяет старые карточки для этой модели; срок — 30 дней с момента покупки.
+      sub.cards = record.cardsIncluded;
+      sub.expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
       user.starsBalance += record.cardsIncluded;
+      syncModelBalances(user);
     }
     if (record.starsToAdd > 0) {
       user.starsBalance += record.starsToAdd;
@@ -558,6 +606,7 @@ export class MemStorage implements IStorage {
       const appUser = Array.from(this.appUsers.values()).find(
         (u) => u.username.toLowerCase() === su.username.toLowerCase()
       );
+      if (appUser) syncModelBalances(appUser);
       return {
         ...su,
         id: appUser?.id ?? null,

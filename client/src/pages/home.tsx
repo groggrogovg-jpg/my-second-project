@@ -22,6 +22,7 @@ import {
   type ModelId, type AspectRatioId,
 } from "@shared/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { formatSubscriptionExpiry } from "@/lib/utils";
 
 type GarmentCategory = "head" | "top" | "bottom" | "feet" | "extra";
 const GARMENT_CATEGORIES: { id: GarmentCategory; label: string; examples: string }[] = [
@@ -39,6 +40,8 @@ interface AuthUser {
   nano2Balance: number;
   proBalance: number;
   starsBalance: number;
+  nano2ExpiresAt: string;
+  proExpiresAt: string;
   trialNano2Used: boolean;
   trialProUsed: boolean;
   trialTryonUsed: boolean;
@@ -72,6 +75,8 @@ export default function Home() {
   const nano2Balance = authUser?.nano2Balance ?? 0;
   const proBalance = authUser?.proBalance ?? 0;
   const starsBalance = authUser?.starsBalance ?? 0;
+  const nano2ExpiresAt = authUser?.nano2ExpiresAt ?? new Date().toISOString();
+  const proExpiresAt = authUser?.proExpiresAt ?? new Date().toISOString();
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register" | "forgot">("login");
@@ -659,7 +664,7 @@ export default function Home() {
             )}
             {isAuth ? (
               <div className="flex items-center gap-2">
-                <CardBalance nano2={nano2Balance} pro={proBalance} username={username!} onLogout={handleLogout} />
+                <CardBalance nano2={nano2Balance} pro={proBalance} nano2ExpiresAt={nano2ExpiresAt} proExpiresAt={proExpiresAt} username={username!} onLogout={handleLogout} />
               </div>
             ) : (
               <Button
@@ -1311,7 +1316,7 @@ function ModelPills({ selected, onChange, isAuth, currentBalance }: {
   );
 }
 
-function CardBalance({ nano2, pro, username, onLogout }: { nano2: number; pro: number; username: string; onLogout: () => void }) {
+function CardBalance({ nano2, pro, nano2ExpiresAt, proExpiresAt, username, onLogout }: { nano2: number; pro: number; nano2ExpiresAt: string; proExpiresAt: string; username: string; onLogout: () => void }) {
   return (
     <div className="relative group">
       <div
@@ -1333,12 +1338,14 @@ function CardBalance({ nano2, pro, username, onLogout }: { nano2: number; pro: n
               </span>
               <span className="font-bold text-foreground">{nano2} кард.</span>
             </div>
+            <p className="text-[10px] text-muted-foreground">{formatSubscriptionExpiry(nano2ExpiresAt, nano2)}</p>
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground flex items-center gap-1">
                 <Star className="w-3 h-3 text-primary" /> Nano Banana Pro
               </span>
               <span className="font-bold text-primary">{pro} кард.</span>
             </div>
+            <p className="text-[10px] text-muted-foreground">{formatSubscriptionExpiry(proExpiresAt, pro)}</p>
           </div>
           <Link href="/profile">
             <Button size="sm" variant="secondary" className="w-full text-xs pointer-events-auto">
