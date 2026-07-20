@@ -14,6 +14,7 @@ import Editor from "@/pages/editor";
 import Admin from "@/pages/admin";
 import ResetPassword from "@/pages/reset-password";
 import PrivacyPolicy from "@/pages/privacy-policy";
+import SubscriptionAgreement from "@/pages/subscription-agreement";
 
 function Router() {
   return (
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/app" component={Home} />
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
+      <Route path="/legal/subscription-agreement" component={SubscriptionAgreement} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/profile" component={Profile} />
       <Route path="/payment-success" component={PaymentSuccess} />

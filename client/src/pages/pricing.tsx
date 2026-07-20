@@ -301,15 +301,13 @@ function PackagesGrid({
                 className="text-xs text-muted-foreground leading-snug cursor-pointer"
               >
                 Принимаю{" "}
-                <a
-                  href="https://magvi.ai/legal/subscription-agreement.pdf"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Link
+                  href="/legal/subscription-agreement"
                   className="text-primary hover:underline"
                   onClick={(e) => e.stopPropagation()}
                 >
                   соглашение о подписке
-                </a>
+                </Link>
                 {" "}и{" "}
                 <Link
                   href="/privacy-policy"
