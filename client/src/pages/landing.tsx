@@ -452,6 +452,7 @@ export default function Landing() {
           <div className="flex items-center gap-4">
             <Link href="/pricing" className="hover:text-foreground transition-colors">Тарифы</Link>
             <a href="#contacts" className="hover:text-foreground transition-colors">Контакты</a>
+            <Link href="/privacy-policy" className="hover:text-foreground transition-colors">Политика конфиденциальности</Link>
           </div>
           <span>© 2025 КардоМатик</span>
         </div>
