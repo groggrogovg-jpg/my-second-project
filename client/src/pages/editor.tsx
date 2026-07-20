@@ -29,6 +29,7 @@ import {
   Crop,
 } from "lucide-react";
 import Konva from "konva";
+import { MobileMenu } from "@/components/mobile-menu";
 
 const CANVAS_W = 800;
 const CANVAS_H = 800;
@@ -385,6 +386,7 @@ export default function Editor() {
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Скачать
             </Button>
+            <MobileMenu isAuth={isAuth} />
           </div>
         </div>
       </header>

@@ -15,6 +15,7 @@ import {
   Shirt,
   MessageCircle,
 } from "lucide-react";
+import { Header } from "@/components/header";
 import { formatSubscriptionExpiry } from "@/lib/utils";
 
 interface AuthUser {
@@ -80,7 +81,7 @@ export default function Profile() {
   if (!username) {
     return (
       <div className="min-h-screen bg-background">
-        <Header />
+        <Header showBack backHref="/app" />
         <main className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
           <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto">
             <User className="w-8 h-8 text-muted-foreground" />
@@ -99,7 +100,7 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header showBack backHref="/app" isAuth onLogout={handleLogout} />
 
       <main className="max-w-3xl mx-auto px-3 sm:px-6 py-6 sm:py-10">
         {/* User info */}
@@ -238,23 +239,3 @@ export default function Profile() {
   );
 }
 
-function Header() {
-  return (
-    <header className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-      <div className="max-w-3xl mx-auto px-3 sm:px-6 h-14 flex items-center gap-3">
-        <Link href="/app">
-          <button className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-            <span className="text-sm hidden sm:inline">Назад</span>
-          </button>
-        </Link>
-        <div className="flex items-center gap-2 ml-1">
-          <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
-            <Sparkles className="w-3 h-3 text-primary-foreground" />
-          </div>
-          <span className="font-bold text-sm text-foreground">КардоМатик</span>
-        </div>
-      </div>
-    </header>
-  );
-}

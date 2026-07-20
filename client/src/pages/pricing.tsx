@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Sparkles, Check, ArrowLeft, Zap, Crown, Package, Loader2 } from "lucide-react";
 import { NANO2_PACKAGES, PRO_PACKAGES } from "@shared/schema";
+import { Header } from "@/components/header";
 import { useToast } from "@/hooks/use-toast";
 
 type ModelTab = "nano2" | "pro";
@@ -17,22 +18,7 @@ export default function Pricing() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center gap-2 sm:gap-4">
-          <Link href="/">
-            <button className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm hidden sm:inline">Назад</span>
-            </button>
-          </Link>
-          <div className="flex items-center gap-2 ml-1 sm:ml-2">
-            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md bg-primary flex items-center justify-center">
-              <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-sm sm:text-base text-foreground">КардоМатик</span>
-          </div>
-        </div>
-      </header>
+      <Header showBack backHref="/" />
       <main className="max-w-5xl mx-auto px-3 sm:px-6 py-8 sm:py-12">
         <div className="text-center mb-6 sm:mb-10">
           <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-xs font-medium mb-3 sm:mb-4">

@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Sparkles, ArrowRight, Upload, Settings2, ImageDown, CheckCircle2, Layers, Shirt, Wand2, Mail, MessageCircle, Plus, ArrowRight as ArrowRightSmall, Star } from "lucide-react";
 import FAQ from "@/components/FAQ";
+import { Header } from "@/components/header";
 
 const TESTIMONIALS = [
   {
@@ -47,33 +48,22 @@ const TRYON_EXAMPLES: { key: string; label: string; src: string; alt: string }[]
 export default function Landing() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <span className="font-semibold text-foreground">КардоМатик</span>
-            <span className="text-xs text-muted-foreground hidden md:block">ИИ-генератор карточек</span>
-          </div>
-          <nav className="flex items-center gap-4">
-            <a href="#before-after" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
-              Примеры
-            </a>
-            <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Тарифы
-            </Link>
-            <a href="https://t.me/KardoMatik_bot" target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
-              Поддержка
-            </a>
-            <Link href="/app">
-              <button className="text-sm bg-primary text-primary-foreground px-4 py-1.5 rounded-lg font-medium hover:bg-primary/90 transition-colors">
-                Попробовать
-              </button>
-            </Link>
-          </nav>
-        </div>
-      </header>
+      <Header
+        desktopRight={
+          <Link href="/app">
+            <button className="text-sm bg-primary text-primary-foreground px-4 py-1.5 rounded-lg font-medium hover:bg-primary/90 transition-colors">
+              Попробовать
+            </button>
+          </Link>
+        }
+        mobileExtra={[
+          {
+            href: "#before-after",
+            label: "Примеры",
+            onClick: () => document.getElementById("before-after")?.scrollIntoView({ behavior: "smooth" }),
+          },
+        ]}
+      />
       <main className="flex-1">
         <section className="max-w-6xl mx-auto px-3 sm:px-6 pt-12 sm:pt-20 pb-10 sm:pb-16 text-center">
           <div className="inline-flex items-center gap-1.5 bg-primary/10 text-primary text-xs font-medium px-3 py-1.5 rounded-full mb-8 border border-primary/20">

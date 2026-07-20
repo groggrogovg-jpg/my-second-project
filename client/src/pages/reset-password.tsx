@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft, Sparkles, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Header } from "@/components/header";
 
 export default function ResetPassword() {
   const [location] = useLocation();
@@ -69,22 +70,7 @@ export default function ResetPassword() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-xl mx-auto px-3 sm:px-6 h-14 flex items-center gap-3">
-          <Link href="/app">
-            <button className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm hidden sm:inline">Назад</span>
-            </button>
-          </Link>
-          <div className="flex items-center gap-2 ml-1">
-            <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
-              <Sparkles className="w-3 h-3 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-sm text-foreground">КардоМатик</span>
-          </div>
-        </div>
-      </header>
+      <Header showBack backHref="/app" />
 
       <main className="flex-1 flex items-center justify-center p-4">
         <Card className="w-full max-w-sm p-6 space-y-4">

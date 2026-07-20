@@ -22,6 +22,7 @@ import {
   type ModelId, type AspectRatioId,
 } from "@shared/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Header } from "@/components/header";
 import { formatSubscriptionExpiry } from "@/lib/utils";
 
 type GarmentCategory = "head" | "top" | "bottom" | "feet" | "extra";
@@ -620,67 +621,27 @@ export default function Home() {
         </div>
       )}
 
-      <header className="border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
-              <Sparkles className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="font-bold text-base leading-tight text-foreground tracking-tight">КардоМатик</h1>
-              <p className="text-xs text-muted-foreground leading-none">ИИ-генератор карточек товаров</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link href="/pricing">
-              <button
-                className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
-                data-testid="link-pricing"
-              >
-                <CreditCard className="w-3.5 h-3.5" />
-                Тарифы
-              </button>
-            </Link>
-            <a
-              href="https://t.me/KardoMatik_bot"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
-              data-testid="link-support"
+      <Header
+        isAuth={isAuth}
+        onLogin={() => { setAuthMode("login"); setAuthModalOpen(true); }}
+        onLogout={handleLogout}
+        desktopRight={
+          isAuth ? (
+            <CardBalance nano2={nano2Balance} pro={proBalance} nano2ExpiresAt={nano2ExpiresAt} proExpiresAt={proExpiresAt} username={username!} onLogout={handleLogout} />
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setAuthMode("login"); setAuthModalOpen(true); }}
+              className="flex items-center gap-1.5 text-xs"
+              data-testid="button-login"
             >
-              <MessageCircle className="w-3.5 h-3.5" />
-              Поддержка
-            </a>
-            {isAuth && (
-              <Link href="/profile">
-                <button
-                  className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-md hover:bg-muted"
-                  data-testid="link-profile"
-                >
-                  <User className="w-3.5 h-3.5" />
-                  Профиль
-                </button>
-              </Link>
-            )}
-            {isAuth ? (
-              <div className="flex items-center gap-2">
-                <CardBalance nano2={nano2Balance} pro={proBalance} nano2ExpiresAt={nano2ExpiresAt} proExpiresAt={proExpiresAt} username={username!} onLogout={handleLogout} />
-              </div>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => { setAuthMode("login"); setAuthModalOpen(true); }}
-                className="flex items-center gap-1.5 text-xs"
-                data-testid="button-login"
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Войти</span>
-              </Button>
-            )}
-          </div>
-        </div>
-      </header>
+              <LogIn className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Войти</span>
+            </Button>
+          )
+        }
+      />
 
       <main className="max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-start">
