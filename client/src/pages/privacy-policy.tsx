@@ -30,12 +30,12 @@ export default function PrivacyPolicy() {
             <p className="text-sm text-muted-foreground">
               Действует для сайта{" "}
               <a
-                href="https://kardomatik"
+                href="https://kardomatik.ru"
                 className="text-primary hover:underline"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                https://kardomatik
+                https://kardomatik.ru
               </a>
             </p>
           </div>
@@ -51,8 +51,8 @@ export default function PrivacyPolicy() {
                 </li>
                 <li>
                   Настоящая политика Оператора в отношении обработки персональных данных (далее — Политика) применяется ко всей информации, которую Оператор может получить о посетителях веб-сайта{" "}
-                  <a href="https://kardomatik" target="_blank" rel="noopener noreferrer">
-                    https://kardomatik
+                  <a href="https://kardomatik.ru" target="_blank" rel="noopener noreferrer">
+                    https://kardomatik.ru
                   </a>
                   .
                 </li>
@@ -69,8 +69,8 @@ export default function PrivacyPolicy() {
                 </li>
                 <li>
                   <strong>Веб-сайт</strong> — совокупность графических и информационных материалов, а также программ для ЭВМ и баз данных, обеспечивающих их доступность в сети интернет по сетевому адресу{" "}
-                  <a href="https://kardomatik" target="_blank" rel="noopener noreferrer">
-                    https://kardomatik
+                  <a href="https://kardomatik.ru" target="_blank" rel="noopener noreferrer">
+                    https://kardomatik.ru
                   </a>
                   .
                 </li>
@@ -88,15 +88,15 @@ export default function PrivacyPolicy() {
                 </li>
                 <li>
                   <strong>Персональные данные</strong> — любая информация, относящаяся прямо или косвенно к определенному или определяемому Пользователю веб-сайта{" "}
-                  <a href="https://kardomatik" target="_blank" rel="noopener noreferrer">
-                    https://kardomatik
+                  <a href="https://kardomatik.ru" target="_blank" rel="noopener noreferrer">
+                    https://kardomatik.ru
                   </a>
                   .
                 </li>
                 <li>
                   <strong>Пользователь</strong> — посетитель веб-сайта{" "}
-                  <a href="https://kardomatik" target="_blank" rel="noopener noreferrer">
-                    https://kardomatik
+                  <a href="https://kardomatik.ru" target="_blank" rel="noopener noreferrer">
+                    https://kardomatik.ru
                   </a>
                   .
                 </li>
@@ -134,7 +134,7 @@ export default function PrivacyPolicy() {
                 </li>
                 <li>
                   Также Оператор имеет право направлять Пользователю уведомления о новых продуктах и услугах, специальных предложениях и различных событиях. Пользователь всегда может отказаться от получения информационных сообщений, направив Оператору письмо на адрес электронной почты{" "}
-                  <a href="mailto:support@kardomatik">support@kardomatik</a>{" "}
+                  <a href="mailto:support@kardomatik.ru">support@kardomatik.ru</a>{" "}
                   с пометкой «Отказ от уведомлений о новых продуктах и услугах и специальных предложениях».
                 </li>
                 <li>
@@ -147,8 +147,8 @@ export default function PrivacyPolicy() {
               <ol className="list-decimal list-outside ml-5 space-y-2">
                 <li>
                   Оператор обрабатывает персональные данные Пользователя только в случае их заполнения и/или отправки Пользователем самостоятельно через специальные формы, расположенные на сайте{" "}
-                  <a href="https://kardomatik" target="_blank" rel="noopener noreferrer">
-                    https://kardomatik
+                  <a href="https://kardomatik.ru" target="_blank" rel="noopener noreferrer">
+                    https://kardomatik.ru
                   </a>
                   . Заполняя соответствующие формы и/или отправляя свои персональные данные Оператору, Пользователь выражает свое согласие с данной Политикой.
                 </li>
@@ -171,12 +171,12 @@ export default function PrivacyPolicy() {
                 </li>
                 <li>
                   В случае выявления неточностей в персональных данных, Пользователь может актуализировать их самостоятельно, путем направления Оператору уведомление на адрес электронной почты Оператора{" "}
-                  <a href="mailto:support@kardomatik">support@kardomatik</a>{" "}
+                  <a href="mailto:support@kardomatik.ru">support@kardomatik.ru</a>{" "}
                   с пометкой «Актуализация персональных данных».
                 </li>
                 <li>
                   Срок обработки персональных данных является неограниченным. Пользователь может в любой момент отозвать свое согласие на обработку персональных данных, направив Оператору уведомление посредством электронной почты на электронный адрес Оператора{" "}
-                  <a href="mailto:support@kardomatik">support@kardomatik</a>{" "}
+                  <a href="mailto:support@kardomatik.ru">support@kardomatik.ru</a>{" "}
                   с пометкой «Отзыв согласия на обработку персональных данных».
                 </li>
               </ol>
@@ -197,7 +197,7 @@ export default function PrivacyPolicy() {
               <ol className="list-decimal list-outside ml-5 space-y-2">
                 <li>
                   Пользователь может получить любые разъяснения по интересующим вопросам, касающимся обработки его персональных данных, обратившись к Оператору с помощью электронной почты{" "}
-                  <a href="mailto:support@kardomatik">support@kardomatik</a>
+                  <a href="mailto:support@kardomatik.ru">support@kardomatik.ru</a>
                   .
                 </li>
                 <li>
@@ -205,8 +205,8 @@ export default function PrivacyPolicy() {
                 </li>
                 <li>
                   Актуальная версия Политики в свободном доступе расположена в сети Интернет по адресу{" "}
-                  <a href="https://kardomatik/privacy-policy" target="_blank" rel="noopener noreferrer">
-                    https://kardomatik/privacy-policy
+                  <a href="https://kardomatik.ru/privacy-policy" target="_blank" rel="noopener noreferrer">
+                    https://kardomatik.ru/privacy-policy
                   </a>
                   .
                 </li>

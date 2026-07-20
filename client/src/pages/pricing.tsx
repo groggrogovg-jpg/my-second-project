@@ -310,6 +310,14 @@ function PackagesGrid({
                 >
                   соглашение о подписке
                 </a>
+                {" "}и{" "}
+                <Link
+                  href="/privacy-policy"
+                  className="text-primary hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Политику конфиденциальности
+                </Link>
               </Label>
             </div>
           </div>
