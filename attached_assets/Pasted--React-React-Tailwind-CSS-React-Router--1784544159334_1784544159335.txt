@@ -1,0 +1,177 @@
+Ты — разработчик React-приложения «КардоМатик». Стек: React + Tailwind CSS + React Router (или ваш роутер). В приложении уже есть:
+
+- Шапка (header) с навигацией: логотип, ссылки (Главная, Тарифы, Контакты, Личный кабинет), кнопка «Войти» или «Профиль».
+- Навигационное меню в десктопной версии (работает горизонтально).
+
+Задача: **добавить адаптивное бургер-меню для мобильных устройств (ширина экрана ≤ 768px)**.
+
+Требования:
+
+1. На мобильных устройствах вместо горизонтального меню показывается:
+   - Слева — логотип.
+   - Справа — иконка бургер-меню (три горизонтальные линии ☰ или SVG).
+
+2. При клике на бургер-иконку:
+   - Меню плавно выезжает (слайд) сверху вниз или справа налево (выбери один из вариантов, лучше сверху вниз — это стандарт для React-приложений).
+   - Показываются все пункты меню: Главная, Тарифы, Контакты, Личный кабинет, а также кнопка «Войти» или «Профиль» (в зависимости от состояния авторизации).
+   - Задний фон затемняется (overlay).
+   - Клик на оверлей или на кнопку закрытия (крестик) закрывает меню.
+
+3. При клике на любой пункт меню:
+   - Меню автоматически закрывается.
+   - Происходит переход на соответствующую страницу (используй React Router Link или useNavigate).
+
+4. Меню должно быть стилизовано в едином дизайне с приложением:
+   - Фиолетово-синий градиент (#6C3CE1 → #4A00E0) или темный фон.
+   - Белый текст.
+   - Пункты меню с отступами, крупным шрифтом (удобно для пальцев).
+   - Анимация плавного появления/исчезновения (transition).
+
+5. Техническая реализация:
+   - Создай компонент `MobileMenu.jsx` (или `BurgerMenu.jsx`).
+   - В компоненте `Header.jsx` добавь условный рендеринг: если ширина экрана <= 768px — показывай бургер, иначе — горизонтальное меню.
+   - Используй `useState` для управления состоянием открыто/закрыто.
+   - Используй React Router `Link` или `useNavigate` для переходов.
+   - Добавь обработчик для закрытия меню при клике на ссылку.
+
+6. Доступность (a11y):
+   - Добавь `aria-label="Открыть меню"` для бургер-кнопки.
+   - Добавь `aria-label="Закрыть меню"` для кнопки закрытия.
+   - Кнопки должны быть фокусируемыми и доступными с клавиатуры (Tab, Enter).
+
+7. Поведение при авторизации:
+   - Если пользователь авторизован: показывать пункт «Личный кабинет» и кнопку «Выйти» (или иконку профиля).
+   - Если не авторизован: показывать «Войти» / «Регистрация».
+
+8. Примерная структура меню (адаптируй под свой проект):
+Логотип
+Главная
+Тарифы
+Контакты
+Личный кабинет / Войти
+
+text
+
+9. Ширина брейкпоинта: 768px (Tailwind класс `md`). На экранах больше 768px — горизонтальное меню, меньше — бургер.
+
+---
+
+## Пример кода (можешь использовать как основу, адаптируй под свою структуру):
+
+```jsx
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from './hooks/useAuth'; // твой хук авторизации
+
+const MobileMenu = () => {
+const [isOpen, setIsOpen] = useState(false);
+const { user, logout } = useAuth();
+const navigate = useNavigate();
+
+const toggleMenu = () => setIsOpen(!isOpen);
+const closeMenu = () => setIsOpen(false);
+
+const handleLogout = () => {
+ logout();
+ closeMenu();
+ navigate('/');
+};
+
+return (
+ <>
+   {/* Бургер-кнопка */}
+   <button
+     onClick={toggleMenu}
+     className="md:hidden flex flex-col gap-1 p-2"
+     aria-label="Открыть меню"
+   >
+     <span className="block w-6 h-0.5 bg-white"></span>
+     <span className="block w-6 h-0.5 bg-white"></span>
+     <span className="block w-6 h-0.5 bg-white"></span>
+   </button>
+
+   {/* Мобильное меню (выезжающее) */}
+   <div
+     className={`
+       fixed top-0 left-0 w-full h-screen bg-gradient-to-r from-purple-700 to-purple-900 z-50
+       transition-transform duration-300 ease-in-out
+       ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+       md:hidden
+     `}
+   >
+     {/* Кнопка закрытия */}
+     <button
+       onClick={closeMenu}
+       className="absolute top-4 right-4 text-white text-3xl"
+       aria-label="Закрыть меню"
+     >
+       ✕
+     </button>
+
+     {/* Ссылки меню */}
+     <nav className="flex flex-col items-center justify-center h-full gap-8 text-white text-2xl font-semibold">
+       <Link to="/" onClick={closeMenu}>Главная</Link>
+       <Link to="/pricing" onClick={closeMenu}>Тарифы</Link>
+       <Link to="/contacts" onClick={closeMenu}>Контакты</Link>
+       {user ? (
+         <>
+           <Link to="/profile" onClick={closeMenu}>Личный кабинет</Link>
+           <button onClick={handleLogout} className="text-red-300 hover:text-red-100">
+             Выйти
+           </button>
+         </>
+       ) : (
+         <>
+           <Link to="/login" onClick={closeMenu}>Войти</Link>
+           <Link to="/register" onClick={closeMenu}>Регистрация</Link>
+         </>
+       )}
+     </nav>
+   </div>
+
+   {/* Оверлей (затемнение фона) */}
+   {isOpen && (
+     <div
+       className="fixed inset-0 bg-black/50 z-40 md:hidden"
+       onClick={closeMenu}
+       aria-hidden="true"
+     />
+   )}
+ </>
+);
+};
+
+export default MobileMenu;
+Интеграция в Header
+В компоненте Header добавь:
+
+jsx
+// Внутри Header.jsx
+<div className="flex items-center justify-between">
+  <Link to="/" className="text-2xl font-bold text-white">
+    КардоМатик
+  </Link>
+  
+  {/* Десктопное меню */}
+  <div className="hidden md:flex items-center gap-6">
+    <Link to="/" className="text-white hover:text-purple-300">Главная</Link>
+    <Link to="/pricing" className="text-white hover:text-purple-300">Тарифы</Link>
+    <Link to="/contacts" className="text-white hover:text-purple-300">Контакты</Link>
+    {/* и другие ссылки */}
+  </div>
+
+  {/* Мобильное меню (бургер) */}
+  <MobileMenu />
+</div>
+Что должно быть после выполнения:
+На экранах меньше 768px отображается бургер-иконка.
+
+При клике меню плавно выезжает с анимацией.
+
+При клике на ссылку меню закрывается и происходит переход.
+
+Фон затемнён, клик по затемнению закрывает меню.
+
+На десктопе (>768px) меню остаётся горизонтальным (без изменений).
+
+После выполнения покажи изменённые файлы (Header, MobileMenu) и объясни, как протестировать на разных размерах экрана (в браузере через DevTools).
