@@ -383,7 +383,9 @@ export default function Landing() {
             <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">
               Попробуйте прямо сейчас
             </h2>
-            <p className="text-white/80 mb-8 text-base">2 карточки бесплатно и одна примерка одежды на модели</p>
+            <p className="text-white/80 mb-8 text-base">
+              Бесплатно 2 карточки и одна примерка одежды
+            </p>
             <Link href="/app">
               <button
                 className="inline-flex items-center gap-2 bg-white text-violet-700 px-8 py-3.5 rounded-xl text-base font-bold hover:bg-white/90 transition-all shadow-lg hover:-translate-y-0.5"
