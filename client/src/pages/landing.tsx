@@ -402,7 +402,7 @@ export default function Landing() {
             <p className="text-muted-foreground">Есть вопросы? Мы на связи — ответим быстро</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
             {[
               {
                 icon: <Mail className="w-6 h-6 text-primary" />,
