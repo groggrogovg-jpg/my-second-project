@@ -220,6 +220,12 @@ function PackagesGrid({
   const modelName = model === "nano2" ? "Nano Banana 2" : "Nano Banana Pro";
   const colorClass = model === "pro" ? "border-primary ring-1 ring-primary" : "border-border";
   const accentClass = model === "pro" ? "text-primary" : "text-foreground";
+  const audienceByCards: Record<number, string> = {
+    5: "Для пробных запусков",
+    10: "Для фрилансеров и малого бизнеса",
+    50: "Для активных селлеров и агентств",
+    100: "Для оптовых заказов и больших проектов",
+  };
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -235,6 +241,7 @@ function PackagesGrid({
                 <div>
                   <p className="text-xs text-muted-foreground font-medium">{modelName}</p>
                   <h3 className="font-bold text-lg text-foreground">{pkg.cards} карточек</h3>
+                  <p className="text-xs text-muted-foreground mt-1">{audienceByCards[pkg.cards]}</p>
                 </div>
                 {pkg.popular && (
                   <Badge className="text-[10px] flex-shrink-0">Выгодно</Badge>

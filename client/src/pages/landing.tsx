@@ -73,16 +73,17 @@ export default function Landing() {
 
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 leading-tight">
             <span className="bg-gradient-to-r from-violet-600 via-blue-600 to-cyan-500 bg-clip-text text-transparent">
-              Создавайте продающие
+              КардоМатик — создавайте
             </span>
             <br />
             <span className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-transparent">
-              карточки товаров с ИИ
+              карточки для маркетплейсов за минуты
             </span>
           </h1>
 
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
-            Для Ozon, Wildberries и Яндекс Маркет. Профессиональный результат за минуты — без дизайнера.
+            Инструмент для фрилансеров и предпринимателей. Экономьте до 90% бюджета и времени.
+            Попробуйте бесплатно — 2 карточки и примерка в подарок.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-10">
@@ -103,7 +104,7 @@ export default function Landing() {
           </div>
 
           <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground flex-wrap">
-            {["3 карточки бесплатно", "Без навыков дизайна", "Готово за 2 минуты"].map((label) => (
+            {["2 карточки бесплатно", "Без навыков дизайна", "Готово за 2–3 минуты"].map((label) => (
               <span key={label} className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
                 {label}
@@ -154,6 +155,85 @@ export default function Landing() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="audience" className="max-w-6xl mx-auto px-3 sm:px-6 py-10 sm:py-16">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">Кому подходит КардоМатик</h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">
+              Делайте больше, тратьте меньше и управляйте созданием карточек прямо на сайте.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            <div className="rounded-2xl border border-border bg-background p-6 sm:p-8">
+              <h3 className="text-xl font-semibold text-foreground mb-5">Для фрилансеров</h3>
+              <ul className="space-y-3">
+                {[
+                  "Себестоимость карточки — около 55 ₽. Продавайте клиентам за 200–500 ₽ и получайте маржу до 445 ₽.",
+                  "Создавайте карточки за 2–3 минуты и берите больше заказов.",
+                  "Обрабатывайте заказы любого объёма — 10, 50 или 100 карточек — без помощников.",
+                  "Единый стиль для всех клиентов формируется автоматически.",
+                  "2 карточки и примерка бесплатно — протестируйте сервис перед покупкой.",
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-muted-foreground leading-relaxed">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-2xl border border-border bg-background p-6 sm:p-8">
+              <h3 className="text-xl font-semibold text-foreground mb-5">Для селлеров и бизнеса</h3>
+              <ul className="space-y-3">
+                {[
+                  "Карточка за 55 ₽ вместо 200–500 ₽ у фрилансеров — снижайте расходы.",
+                  "Создавайте карточки самостоятельно и не ждите дизайнера.",
+                  "Быстро тестируйте несколько вариантов для A/B-тестов.",
+                  "Все инструменты в одном месте: генерация, примерка и смена фона.",
+                  "Полный контроль качества — никаких посредников.",
+                  "Выводите товары на маркетплейсы быстрее конкурентов.",
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-muted-foreground leading-relaxed">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <div className="mt-6 text-center">
+            <Link href="/app">
+              <button className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-6 py-3 rounded-xl text-sm font-semibold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+                Получить бесплатные карточки
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </Link>
+          </div>
+        </section>
+
+        <section className="bg-muted/30 border-y border-border py-10 sm:py-16">
+          <div className="max-w-6xl mx-auto px-3 sm:px-6">
+            <div className="text-center mb-10">
+              <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">Рассчитайте свою выгоду</h2>
+              <p className="text-muted-foreground">Понятная экономика для фрилансера и селлера</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 max-w-4xl mx-auto">
+              <div className="rounded-2xl border border-border bg-background p-6">
+                <p className="text-sm font-medium text-primary mb-2">Если вы фрилансер</p>
+                <p className="text-2xl font-bold text-foreground mb-2">до 25 000 ₽ выручки</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Купив пакет на 50 карточек за 2 790 ₽, вы можете продать их клиентам за 10 000–25 000 ₽.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-border bg-background p-6">
+                <p className="text-sm font-medium text-primary mb-2">Если вы селлер</p>
+                <p className="text-2xl font-bold text-foreground mb-2">до 90% экономии</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Создавая карточки самостоятельно, вы экономите до 90% бюджета по сравнению с услугами фрилансера.
+                </p>
+              </div>
             </div>
           </div>
         </section>
@@ -384,7 +464,7 @@ export default function Landing() {
               Попробуйте прямо сейчас
             </h2>
             <p className="text-white/80 mb-8 text-base">
-              Бесплатно 2 карточки и одна примерка одежды
+              2 карточки и примерка бесплатно — начните создавать на сайте
             </p>
             <Link href="/app">
               <button
