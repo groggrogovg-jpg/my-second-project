@@ -124,37 +124,37 @@ export const ASPECT_RATIOS = [
     id: "1:1",
     label: "1:1",
     description: "Квадрат",
-    marketplaces: ["Wildberries", "Ozon", "AliExpress"],
+    marketplaces: ["Универсальный формат"],
   },
   {
     id: "3:4",
     label: "3:4",
     description: "Портрет",
-    marketplaces: ["Wildberries", "Ozon"],
+    marketplaces: ["Универсальный портретный формат"],
   },
   {
     id: "4:5",
     label: "4:5",
-    description: "WB",
-    marketplaces: ["Wildberries (оптимально)"],
+    description: "Вертикальная карточка",
+    marketplaces: ["Вертикальный формат"],
   },
   {
     id: "4:3",
     label: "4:3",
     description: "Пейзаж",
-    marketplaces: ["Яндекс Маркет", "Авито"],
+    marketplaces: ["Широкий формат"],
   },
   {
     id: "9:16",
     label: "9:16",
     description: "Вертикаль",
-    marketplaces: ["Stories", "TikTok Shop"],
+    marketplaces: ["Социальный вертикальный формат"],
   },
 ] as const;
 
 export type AspectRatioId = (typeof ASPECT_RATIOS)[number]["id"];
 
-export const TRIAL_LIMIT = 3;
+export const TRIAL_LIMIT = 2;
 
 export const INITIAL_STARS = 10;
 export const VIDEO_STAR_COSTS: Record<5 | 10, number> = { 5: 5, 10: 10 };
@@ -191,18 +191,17 @@ export const PRO_PACKAGES = [
 ] as const;
 
 export const MARKETPLACE_FORMATS = [
-  { id: "wb", name: "Wildberries", ratio: "3:4", width: 900, height: 1200, maxMb: 10, hint: "" },
-  { id: "ozon", name: "Ozon", ratio: "3:4", width: 900, height: 1200, maxMb: 10, hint: "" },
+  { id: "portrait-standard", name: "Стандартный портрет", ratio: "3:4", width: 900, height: 1200, maxMb: 10, hint: "" },
   {
-    id: "yandex",
-    name: "Яндекс Маркет",
+    id: "portrait-large",
+    name: "Портретный расширенный",
     ratio: "3:4",
     width: 878,
     height: 1170,
     maxMb: 10,
-    hint: "Также поддерживается 1:1 (1040×1440). Рекомендуем 3:4.",
+    hint: "Также поддерживается квадратный формат.",
   },
-  { id: "kaspi", name: "Kaspi.kz", ratio: "1:1", width: 500, height: 500, maxMb: 25, hint: "Мин. 500×500, макс. 5000×5000 px." },
+  { id: "square-standard", name: "Стандартный квадрат", ratio: "1:1", width: 500, height: 500, maxMb: 25, hint: "Рекомендуемый размер от 500×500 px." },
 ] as const;
 
 export type MarketplaceFormatId = (typeof MARKETPLACE_FORMATS)[number]["id"];

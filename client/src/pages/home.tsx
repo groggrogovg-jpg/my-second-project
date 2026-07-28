@@ -44,6 +44,7 @@ interface AuthUser {
   nano2ExpiresAt: string;
   proExpiresAt: string;
   trialNano2Used: boolean;
+  trialNano2Count: number;
   trialProUsed: boolean;
   trialTryonUsed: boolean;
 }
@@ -65,7 +66,7 @@ export default function Home() {
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [noText, setNoText] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<ModelId>("nano-banana-pro");
+  const [selectedModel, setSelectedModel] = useState<ModelId>("nano-banana-2");
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatioId>("1:1");
   const [activeGenerationId, setActiveGenerationId] = useState<string | null>(null);
 
@@ -289,15 +290,17 @@ export default function Home() {
 
   // Генерация теперь доступна только авторизованным пользователям.
   // Каждая функция (nano2/pro/примерка) даёт одну независимую бесплатную попытку.
-  const currentModelTrialUsed = selectedModel === "nano-banana-2" ? authUser?.trialNano2Used : authUser?.trialProUsed;
-  const cardTrialAvailable = isAuth && !currentModelTrialUsed;
+  const currentModelTrialUsed = selectedModel === "nano-banana-2"
+    ? (authUser?.trialNano2Count ?? (authUser?.trialNano2Used ? 1 : 0)) >= 2
+    : true;
+  const cardTrialAvailable = isAuth && selectedModel === "nano-banana-2" && !currentModelTrialUsed;
   const tryonTrialAvailable = isAuth && !authUser?.trialTryonUsed;
 
   const canGenerate =
     !isAuth
       ? false
       : activeTab === "card"
-      ? (currentBalance > 0 || cardTrialAvailable) && selectedFiles.length > 0
+       ? (selectedModel === "nano-banana-pro" ? currentBalance > 0 : (currentBalance > 0 || cardTrialAvailable)) && selectedFiles.length > 0
       : activeTab === "photo"
       ? (tryonBalance > 0 || tryonTrialAvailable) && selectedFiles.length > 0 && hasAnyGarment
       : false;
@@ -647,7 +650,7 @@ export default function Home() {
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-start">
           <div className="w-full lg:w-[340px] flex-shrink-0 space-y-3">
             <PhotoBlock
-              selectedFiles={selectedFiles}
+               selectedFiles={selectedFiles}
               previewUrls={previewUrls}
               onFilesAdd={handleFilesAdd}
               onRemove={handleRemoveFile}
@@ -682,6 +685,8 @@ export default function Home() {
               setTryonGarments={setTryonGarments}
               isAuth={isAuth}
               currentBalance={currentBalance}
+               nano2Balance={nano2Balance}
+               proBalance={proBalance}
               tryonBalance={tryonBalance}
               cardTrialAvailable={cardTrialAvailable}
               tryonTrialAvailable={tryonTrialAvailable}
@@ -691,6 +696,7 @@ export default function Home() {
               isPending={cardMutation.isPending || videoMutation.isPending || tryonMutation.isPending}
               hasFiles={selectedFiles.length > 0}
               selectedFiles={selectedFiles}
+               trialNano2Count={authUser?.trialNano2Count ?? (authUser?.trialNano2Used ? 1 : 0)}
               onGenerate={handleGenerate}
               onAuthOpen={() => { setAuthMode("login"); setAuthModalOpen(true); }}
             />
@@ -839,9 +845,9 @@ function GenerateBlock({
   videoCardMode, setVideoCardMode,
   videoDesc, setVideoDesc,
   tryonGarments, setTryonGarments,
-  isAuth, currentBalance, tryonBalance, cardTrialAvailable, tryonTrialAvailable,
+  isAuth, currentBalance, nano2Balance, proBalance, tryonBalance, cardTrialAvailable, tryonTrialAvailable,
   canGenerate, currentModel, videoStars, isPending, hasFiles,
-  selectedFiles,
+  selectedFiles, trialNano2Count,
   onGenerate, onAuthOpen,
 }: {
   activeTab: ContentTab; setActiveTab: (t: ContentTab) => void;
@@ -857,12 +863,12 @@ function GenerateBlock({
   videoDesc: string; setVideoDesc: (v: string) => void;
   tryonGarments: Record<GarmentCategory, { file: File | null; url: string | null }>;
   setTryonGarments: React.Dispatch<React.SetStateAction<Record<GarmentCategory, { file: File | null; url: string | null }>>>;
-  isAuth: boolean; currentBalance: number; tryonBalance: number; cardTrialAvailable: boolean; tryonTrialAvailable: boolean;
+  isAuth: boolean; currentBalance: number; nano2Balance: number; proBalance: number; tryonBalance: number; cardTrialAvailable: boolean; tryonTrialAvailable: boolean;
   canGenerate: boolean;
   currentModel: typeof MODELS[number];
   videoStars: number;
   isPending: boolean; hasFiles: boolean;
-  selectedFiles: File[];
+  selectedFiles: File[]; trialNano2Count: number;
   onGenerate: () => void;
   onAuthOpen: () => void;
 }) {
@@ -921,6 +927,9 @@ function GenerateBlock({
           isAuth={isAuth}
           currentBalance={currentBalance}
           selectedFiles={selectedFiles}
+          trialNano2Count={trialNano2Count}
+          nano2Balance={nano2Balance}
+          proBalance={proBalance}
         />
       )}
 
@@ -1045,13 +1054,13 @@ function GenerateBlock({
 
 function CardTabContent({
   notes, setNotes, noText, setNoText, selectedModel, setSelectedModel, isAuth, currentBalance,
-  selectedFiles,
+  selectedFiles, trialNano2Count, nano2Balance, proBalance,
 }: {
   notes: string; setNotes: (v: string) => void;
   noText: boolean; setNoText: (v: boolean) => void;
   selectedModel: ModelId; setSelectedModel: (m: ModelId) => void;
   isAuth: boolean; currentBalance: number;
-  selectedFiles: File[];
+  selectedFiles: File[]; trialNano2Count: number; nano2Balance: number; proBalance: number;
 }) {
   const [suggesting, setSuggesting] = useState(false);
   const { toast } = useToast();
@@ -1104,7 +1113,7 @@ function CardTabContent({
       </div>
 
       {isAuth ? (
-        <ModelPills selected={selectedModel} onChange={setSelectedModel} isAuth={isAuth} currentBalance={currentBalance} />
+        <ModelPills selected={selectedModel} onChange={setSelectedModel} isAuth={isAuth} currentBalance={currentBalance} nano2Balance={nano2Balance} proBalance={proBalance} trialNano2Count={trialNano2Count} />
       ) : (
         <div className="rounded-lg border border-dashed border-border p-3 text-center">
           <p className="text-xs text-muted-foreground">Войдите, чтобы выбрать модель ИИ (Nano Banana 2 / Pro)</p>
@@ -1241,11 +1250,14 @@ function TryonTabContent({
   );
 }
 
-function ModelPills({ selected, onChange, isAuth, currentBalance }: {
+function ModelPills({ selected, onChange, isAuth, currentBalance, nano2Balance, proBalance, trialNano2Count }: {
   selected: ModelId;
   onChange: (m: ModelId) => void;
   isAuth: boolean;
   currentBalance: number;
+  nano2Balance: number;
+  proBalance: number;
+  trialNano2Count: number;
 }) {
   return (
     <div>
@@ -1253,10 +1265,13 @@ function ModelPills({ selected, onChange, isAuth, currentBalance }: {
       <div className="flex gap-1.5">
         {MODELS.map((m) => {
           const isSelected = selected === m.id;
+          const isTrialPro = m.id === "nano-banana-pro" && proBalance === 0;
+          const trialLimitReached = m.id === "nano-banana-2" && nano2Balance === 0 && trialNano2Count >= 2;
           return (
             <button
               key={m.id}
-              onClick={() => onChange(m.id)}
+              onClick={() => !isTrialPro && !trialLimitReached && onChange(m.id)}
+              disabled={isTrialPro || trialLimitReached}
               data-testid={`model-${m.id}`}
               className={`flex-1 flex flex-col items-center py-2 px-1 rounded-lg border text-xs transition-all ${
                 isSelected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border bg-muted/30 hover:border-primary/40"
@@ -1273,6 +1288,12 @@ function ModelPills({ selected, onChange, isAuth, currentBalance }: {
           );
         })}
       </div>
+      {proBalance === 0 && (
+        <p className="text-[10px] text-muted-foreground mt-1.5">Доступен при покупке тарифа</p>
+      )}
+      {selected === "nano-banana-2" && nano2Balance === 0 && trialNano2Count >= 2 && (
+        <p className="text-xs text-destructive mt-1.5">Лимит пробных карточек исчерпан. Для продолжения приобретите платный пакет</p>
+      )}
     </div>
   );
 }

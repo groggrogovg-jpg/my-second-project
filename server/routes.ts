@@ -1,7 +1,7 @@
 import express from "express";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
-import { storage, MemStorage, type TrialFeature } from "./storage";
+import { storage, MemStorage, effectiveCards, type TrialFeature } from "./storage";
 import { applyTrialWatermark, bufferToDataUrl } from "./watermark";
 import multer from "multer";
 
@@ -241,17 +241,17 @@ async function pollPolzaMedia(jobId: string, apiKey: string): Promise<string> {
 
 async function analyzeWithGpt(imageBase64: string, mimeType: string, notes?: string, noText?: boolean): Promise<any> {
   const promptField = noText
-    ? `"prompt": "Детальный промпт на английском для нейросети (описание того, как оформить фото товара в профессиональную карточку для маркетплейса, включая: стиль фона, цветовую схему, эффекты освещения, тени, декоративные элементы. ВАЖНО: без каких-либо текстовых надписей, заголовков и плашек с текстом — только товар и фон)"`
-    : `"prompt": "Детальный промпт на английском для нейросети (описание того, как изменить и оформить фото товара в профессиональную карточку для маркетплейса, включая: стиль фона, цветовую схему, расположение текстовых блоков, инфографику, логотип место, эффекты освещения, тени. Текст в карточке должен быть на РУССКОМ языке)"`;
+    ? `"prompt": "Детальный промпт на английском для нейросети: оформить фото товара в чистую профессиональную карточку, описав стиль фона, цветовую схему, освещение, тени и нейтральные декоративные элементы. ВАЖНО: без текста, логотипов, водяных знаков и символики сторонних платформ — только товар и фон)"`
+    : `"prompt": "Детальный промпт на английском для нейросети: оформить фото товара в чистую профессиональную карточку, описав стиль фона, цветовую схему, текстовые блоки и нейтральную инфографику. Не добавляй логотипы, водяные знаки или символику сторонних платформ. Текст в карточке должен быть на РУССКОМ языке)"`;
 
-  const systemPrompt = `Ты — профессиональный маркетплейс-копирайтер и визуальный аналитик. Твоя задача — по одной загруженной фотографии товара создать полноценную, продающую карточку для Ozon, Wildberries и Яндекс Маркета.
+  const systemPrompt = `Ты — профессиональный копирайтер и визуальный аналитик. Твоя задача — по одной загруженной фотографии товара создать полноценную, продающую карточку товара.
 
 Алгоритм:
 1. Внимательно проанализируй изображение: определи товар, категорию, тип, пол и возрастную группу; опиши только видимые детали — материал, текстуру, цвет, фурнитуру, упаковку, форму, размер, текст, этикетки, бренд, фон, освещение и предметы для масштаба. На основе визуала оцени стиль и назначение товара.
 2. Сформулируй 5–7 преимуществ, превращая видимые свойства в выгоды покупателя. Не выдумывай состав, размеры, технологии, сертификацию или свойства, которых нельзя подтвердить по фото или дополнительной информации продавца. Если характеристика не видна, укажи «не указано» или не включай её.
 3. Составь готовый текст карточки: заголовок до 60 символов с главным ключевым запросом, преимущества, краткие характеристики, 2–3 сценария «для кого и зачем», 3–5 естественных SEO-ключей и призыв к действию.
 4. Общий объём всех текстовых полей карточки — не более 1000 символов с пробелами. Тон уверенный и дружелюбный, без канцелярита, воды и неподтверждённых обещаний. Не используй шаблонное «высокое качество» без доказательств.
-5. Если на фото есть явный недостаток, который влияет на подачу товара, тактично учти его в description или designStyle. Не добавляй комментарии вне JSON.
+  5. Если на фото есть явный недостаток, который влияет на подачу товара, тактично учти его в description или designStyle. Не добавляй комментарии вне JSON. Не добавляй названия, логотипы, водяные знаки или визуальную символику конкретных площадок и сервисов.
 
 Ответь ТОЛЬКО в формате JSON без markdown, строго следуя этой структуре:
 {
@@ -345,7 +345,7 @@ async function generateCardWithPolza(
     ? `${prompt}
 
 Important requirements:
-- Create a professional marketplace product card based on the provided photo
+ - Create a clean professional product card based on the provided photo
 - Use modern clean design with gradient or white background
 - Beautiful product showcase with perfect lighting and shadows
 - NO text, NO text overlays, NO captions, NO labels, NO badges with text anywhere in the image
@@ -356,7 +356,7 @@ Important requirements:
 - Create a professional marketplace product card based on the provided photo
 - Add Russian text overlays highlighting product benefits
 - Use modern clean design with gradient or white background
-- Include decorative elements: badges, stars, quality icons
+ - Include only neutral decorative elements; never add marketplace/platform logos, watermarks, or platform-specific symbols
 - Make it visually striking and sales-focused
 - All text overlays must be in Russian language`;
 
@@ -505,11 +505,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (username) storage.trackUser(username).catch(() => {});
       const resolution = model === "nano-banana-2" ? "1K" : "2K";
 
+      const requestedUser = await storage.getAppUserById(userId);
+      if (!requestedUser) return res.status(401).json({ error: "Пользователь не найден" });
+      if (model === "nano-banana-pro" && effectiveCards(requestedUser.proSubscription) === 0) {
+        return res.status(403).json({ error: "Доступен при покупке тарифа" });
+      }
+
       // Сервер — источник истины по балансу/пробным попыткам, а не клиент.
       const feature: TrialFeature = model === "nano-banana-2" ? "nano2" : "pro";
       const entitlement = await storage.consumeEntitlement(userId, feature);
       if (!entitlement) {
-        return res.status(403).json({ error: "Нет доступных генераций. Пополните баланс." });
+         return res.status(403).json({
+           error: feature === "nano2"
+             ? "Лимит пробных карточек исчерпан. Для продолжения приобретите платный пакет"
+             : "Нет доступных генераций. Пополните баланс.",
+         });
       }
 
       console.log(`[generate] ▶ START file=${filename} size=${imageBuffer.length}b model=${model} ratio=${aspectRatio} noText=${noText} notes="${notes.substring(0, 50)}${notes.length > 50 ? "..." : ""}" userId=yes trial=${entitlement.usedTrial}`);
@@ -1454,6 +1464,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       nano2ExpiresAt: user.nano2Subscription.expiresAt.toISOString(),
       proExpiresAt: user.proSubscription.expiresAt.toISOString(),
       trialNano2Used: user.trialNano2Used,
+      trialNano2Count: user.trialNano2Count,
       trialProUsed: user.trialProUsed,
       trialTryonUsed: user.trialTryonUsed,
     };
@@ -1630,7 +1641,7 @@ Requirements:
 - All text overlays must be in Russian language
 - Clean modern design with gradient or subtle background
 - Highlight the product with professional lighting and shadows
-- Include decorative elements matching the marketplace style
+- Include only neutral decorative elements; do not add, reproduce, or preserve any marketplace/platform logo, watermark, badge, brand mark, or platform-specific visual symbol
 - Make the title prominent, benefits as bullet points or badges
 - Add the call-to-action as a standout button or badge
 - Preserve the original product photo as the central element`;

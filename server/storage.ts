@@ -20,6 +20,7 @@ export interface AppUser extends User {
   proSubscription: ModelSubscription;
   // Независимые флаги бесплатной пробной попытки для каждой функции
   trialNano2Used: boolean;
+  trialNano2Count: number;
   trialProUsed: boolean;
   trialTryonUsed: boolean;
   isDeveloper: boolean;
@@ -281,6 +282,7 @@ export class MemStorage implements IStorage {
       nano2Subscription: { cards: 0, expiresAt: now },
       proSubscription: { cards: 0, expiresAt: now },
       trialNano2Used: false,
+      trialNano2Count: 0,
       trialProUsed: false,
       trialTryonUsed: false,
       isDeveloper: false,
@@ -292,13 +294,19 @@ export class MemStorage implements IStorage {
 
   async getAppUserById(id: string): Promise<AppUser | undefined> {
     const user = this.appUsers.get(id);
-    if (user) syncModelBalances(user);
+    if (user) {
+      user.trialNano2Count = Number.isFinite(user.trialNano2Count) ? user.trialNano2Count : (user.trialNano2Used ? 1 : 0);
+      syncModelBalances(user);
+    }
     return user;
   }
 
   async getAppUserByUsername(username: string): Promise<AppUser | undefined> {
     const user = Array.from(this.appUsers.values()).find((u) => u.username.toLowerCase() === username.toLowerCase());
-    if (user) syncModelBalances(user);
+    if (user) {
+      user.trialNano2Count = Number.isFinite(user.trialNano2Count) ? user.trialNano2Count : (user.trialNano2Used ? 1 : 0);
+      syncModelBalances(user);
+    }
     return user;
   }
 
@@ -331,6 +339,11 @@ export class MemStorage implements IStorage {
       }
       if (!user.trialNano2Used) {
         user.trialNano2Used = true;
+        user.trialNano2Count = Math.max(1, user.trialNano2Count || 0);
+        return { usedTrial: true };
+      }
+      if (user.trialNano2Count < 2) {
+        user.trialNano2Count += 1;
         return { usedTrial: true };
       }
       return null;
@@ -340,10 +353,6 @@ export class MemStorage implements IStorage {
         user.proSubscription.cards -= 1;
         syncModelBalances(user);
         return { usedTrial: false };
-      }
-      if (!user.trialProUsed) {
-        user.trialProUsed = true;
-        return { usedTrial: true };
       }
       return null;
     }
@@ -364,7 +373,10 @@ export class MemStorage implements IStorage {
     const user = this.appUsers.get(id);
     if (!user) return;
     if (usedTrial) {
-      if (feature === "nano2") user.trialNano2Used = false;
+      if (feature === "nano2") {
+        user.trialNano2Count = Math.max(0, user.trialNano2Count - 1);
+        user.trialNano2Used = user.trialNano2Count > 0;
+      }
       else if (feature === "pro") user.trialProUsed = false;
       else user.trialTryonUsed = false;
       return;
