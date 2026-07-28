@@ -84,6 +84,9 @@ export type GptAnalysis = {
   title: string;
   description: string;
   benefits: string[];
+  characteristics?: string[];
+  useCases?: string[];
+  keywords?: string[];
   callToAction: string;
   designStyle: string;
   prompt: string;

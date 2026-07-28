@@ -351,6 +351,44 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
               </div>
             </div>
 
+            {!!analysis.characteristics?.length && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Характеристики</p>
+                  <div className="space-y-1">
+                    {analysis.characteristics.map((item, i) => (
+                      <p key={i} className="text-sm text-foreground" data-testid={`text-characteristic-${i}`}>• {item}</p>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {!!analysis.useCases?.length && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Для кого и зачем</p>
+                  <div className="space-y-1">
+                    {analysis.useCases.map((item, i) => (
+                      <p key={i} className="text-sm text-foreground" data-testid={`text-use-case-${i}`}>• {item}</p>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {!!analysis.keywords?.length && (
+              <>
+                <Separator />
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">SEO-ключи</p>
+                  <p className="text-sm text-foreground" data-testid="text-keywords">{analysis.keywords.join(", ")}</p>
+                </div>
+              </>
+            )}
+
             <Separator />
 
             <div className="flex items-center justify-between p-3 bg-primary/5 rounded-md border border-primary/20">
