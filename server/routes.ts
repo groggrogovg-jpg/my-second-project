@@ -1360,7 +1360,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (user.starsBalance < cost) {
           return res.status(403).json({ error: "Недостаточно звёзд. Пополните баланс, купив пакет карточек." });
         }
-        await storage.updateStarsBalance(userId, -cost);
       } else {
         return res.status(401).json({ error: "Смена фона доступна только авторизованным пользователям" });
       }
@@ -1402,13 +1401,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const isTrialEdit = !user || (user.nano2Balance === 0 && user.proBalance === 0 && (user.trialNano2Used || user.trialProUsed || user.trialTryonUsed));
       const finalUrl = await processResultImage(resultUrl, isTrialEdit);
+      await storage.updateStarsBalance(userId, -cost);
+      const updatedUser = await storage.getAppUserById(userId);
       console.log(`[edit-background] ✓ DONE trial=${isTrialEdit} url=${finalUrl.substring(0, 80)}...`);
-      res.json({ url: finalUrl, status: "done" });
+      res.json({ url: finalUrl, status: "done", starsBalance: updatedUser?.starsBalance ?? 0 });
     } catch (err: any) {
       const axiosDetail = err?.response?.data ? ` [${JSON.stringify(err.response.data)}]` : "";
       const message = err.message || "Неизвестная ошибка";
       console.error(`[edit-background] ✗ ERROR: ${message}${axiosDetail}`);
       res.status(500).json({ error: message + axiosDetail });
+    }
+  });
+
+  // ===== ОПЕРАЦИИ РЕДАКТОРА И СПИСАНИЕ ЗВЁЗД =====
+  app.post("/api/editor/deduct-stars", async (req: Request, res: Response) => {
+    try {
+      const userId = req.session?.userId;
+      if (!userId) return res.status(401).json({ error: "Авторизуйтесь, чтобы использовать инструменты редактора" });
+      const { amount, actionType } = req.body as { amount?: number; actionType?: string };
+      const cost = Number(amount);
+      if (!Number.isFinite(cost) || cost <= 0 || cost > 10 || !actionType) {
+        return res.status(400).json({ error: "Некорректные параметры операции" });
+      }
+      const user = await storage.getAppUserById(userId);
+      if (!user) return res.status(401).json({ error: "Пользователь не найден" });
+      if (user.starsBalance < cost) {
+        return res.status(403).json({ error: `Недостаточно звёзд. Нужно ${cost} ⭐. Пополните баланс.` });
+      }
+      await storage.updateStarsBalance(userId, -cost);
+      const updated = await storage.getAppUserById(userId);
+      console.log(`[editor] ✓ deducted action=${actionType} cost=${cost} userId=${userId}`);
+      return res.json({ starsBalance: updated?.starsBalance ?? 0 });
+    } catch (err: any) {
+      console.error("[editor] deduct-stars error:", err);
+      return res.status(500).json({ error: "Не удалось списать звёзды" });
     }
   });
 

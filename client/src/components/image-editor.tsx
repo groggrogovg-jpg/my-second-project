@@ -4,7 +4,7 @@ import Konva from "konva";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { X, Download, Type, Trash2, ChevronDown, ChevronUp, Check, Minus, Plus, Sparkles, Loader2, Image as ImageIcon, Star } from "lucide-react";
+import { X, Download, Type, Trash2, ChevronDown, ChevronUp, Check, Minus, Plus, Sparkles, Loader2, Image as ImageIcon, Star, Eraser, Palette } from "lucide-react";
 import { MODELS, BG_EDIT_STAR_COST, type ModelId } from "@shared/schema";
 
 interface EditorElement {
@@ -82,6 +82,12 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, i
   const [bgModel, setBgModel] = useState<ModelId>("nano-banana-pro");
   const [bgSuggesting, setBgSuggesting] = useState(false);
   const [bgSuggestion, setBgSuggestion] = useState<string>("");
+  const [backgroundColor, setBackgroundColor] = useState("#ffffff");
+  const [eraserMode, setEraserMode] = useState(false);
+  const [brushSize, setBrushSize] = useState(32);
+  const [processingLocal, setProcessingLocal] = useState(false);
+  const [isErasing, setIsErasing] = useState(false);
+  const [eraserCharged, setEraserCharged] = useState(false);
 
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
@@ -255,6 +261,139 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, i
     }
   };
 
+  const confirmStarAction = (cost: number) =>
+    window.confirm(`Это действие спишет ${cost} звёзд с вашего баланса. Продолжить?`);
+
+  const deductStars = async (cost: number, actionType: string) => {
+    const resp = await fetch("/api/editor/deduct-stars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: cost, actionType }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || "Не удалось списать звёзды");
+    onStarsChange?.(data.starsBalance);
+  };
+
+  const setImageFromDataUrl = (dataUrl: string) =>
+    new Promise<void>((resolve, reject) => {
+      const next = new window.Image();
+      next.onload = () => {
+        setImageEl(next);
+        setBlobUrl(dataUrl);
+        resolve();
+      };
+      next.onerror = () => reject(new Error("Не удалось обновить изображение"));
+      next.src = dataUrl;
+    });
+
+  const imageToCanvas = () => {
+    if (!imageEl) throw new Error("Изображение ещё загружается");
+    const canvas = document.createElement("canvas");
+    canvas.width = imageEl.naturalWidth;
+    canvas.height = imageEl.naturalHeight;
+    canvas.getContext("2d")!.drawImage(imageEl, 0, 0);
+    return canvas;
+  };
+
+  const handleRemoveBackground = async () => {
+    const cost = 1;
+    if (!confirmStarAction(cost)) return;
+    const previous = blobUrl;
+    setProcessingLocal(true);
+    try {
+      const { removeBackground } = await import("@imgly/background-removal");
+      const source = await (await fetch(blobUrl || imageUrl)).blob();
+      const transparentBlob = await removeBackground(source, { progress: () => {} });
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Не удалось прочитать результат удаления фона"));
+        reader.readAsDataURL(transparentBlob);
+      });
+      await setImageFromDataUrl(dataUrl);
+      try {
+        await deductStars(cost, "remove-background");
+      } catch (err) {
+        if (previous) await setImageFromDataUrl(previous);
+        throw err;
+      }
+    } catch (err: any) {
+      alert(err.message || "Не удалось удалить фон");
+    } finally {
+      setProcessingLocal(false);
+    }
+  };
+
+  const handleFillBackground = async (color: string) => {
+    const cost = 0.5;
+    if (!confirmStarAction(cost)) return;
+    const previous = blobUrl;
+    setProcessingLocal(true);
+    try {
+      const canvas = imageToCanvas();
+      const ctx = canvas.getContext("2d")!;
+      const foreground = document.createElement("canvas");
+      foreground.width = canvas.width;
+      foreground.height = canvas.height;
+      foreground.getContext("2d")!.drawImage(canvas, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(foreground, 0, 0);
+      await setImageFromDataUrl(canvas.toDataURL("image/png"));
+      try {
+        await deductStars(cost, "fill-background");
+      } catch (err) {
+        if (previous) await setImageFromDataUrl(previous);
+        throw err;
+      }
+    } catch (err: any) {
+      alert(err.message || "Не удалось залить фон");
+    } finally {
+      setProcessingLocal(false);
+    }
+  };
+
+  const eraseAt = async (point: { x: number; y: number }) => {
+    if (!imageEl || !stageSize.width) return;
+    const canvas = imageToCanvas();
+    const ctx = canvas.getContext("2d")!;
+    const scaleX = canvas.width / stageSize.width;
+    const scaleY = canvas.height / stageSize.height;
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.beginPath();
+    ctx.arc(point.x * scaleX, point.y * scaleY, brushSize * (scaleX + scaleY) / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    await setImageFromDataUrl(canvas.toDataURL("image/png"));
+  };
+
+  const applyEraser = async () => {
+    const cost = 1;
+    if (!confirmStarAction(cost)) return;
+    setEraserCharged(false);
+    setEraserMode(true);
+  };
+
+  const handleEraseStart = async (point: { x: number; y: number }) => {
+    if (!imageEl) return;
+    const previous = blobUrl;
+    setIsErasing(true);
+    try {
+      await eraseAt(point);
+      if (!eraserCharged) {
+        await deductStars(1, "eraser");
+        setEraserCharged(true);
+      }
+    } catch (err: any) {
+      if (previous) await setImageFromDataUrl(previous);
+      setEraserMode(false);
+      alert(err.message || "Не удалось применить ластик");
+    }
+  };
+
   const handleSuggestBackground = async () => {
     setBgSuggesting(true);
     setBgSuggestion("");
@@ -310,7 +449,7 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, i
       setBgEditorOpen(false);
       setBgPrompt("");
       setBgSuggestion("");
-      onStarsChange?.(stars - cost);
+       if (typeof data.starsBalance === "number") onStarsChange?.(data.starsBalance);
     } catch (err: any) {
       alert(err.message || "Ошибка замены фона");
     } finally {
@@ -331,7 +470,7 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, i
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => setBgEditorOpen(true)} disabled={bgGenerating}>
+          <Button size="sm" variant="outline" onClick={() => setBgEditorOpen(true)} disabled={bgGenerating || processingLocal}>
             <ImageIcon className="w-3.5 h-3.5 mr-1.5" />
             {bgGenerating ? "Генерация..." : `Изменить фон ${BG_EDIT_STAR_COST} ⭐`}
           </Button>
@@ -370,8 +509,20 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, i
                 width={stageSize.width}
                 height={stageSize.height}
                 onClick={handleStageClick}
+                onMouseDown={async (e) => {
+                  if (!eraserMode || processingLocal) return;
+                  const point = e.target.getStage()?.getPointerPosition();
+                  if (point) await handleEraseStart(point);
+                }}
+                onMouseMove={async (e) => {
+                  if (!eraserMode || !isErasing || processingLocal) return;
+                  const point = e.target.getStage()?.getPointerPosition();
+                  if (point) await eraseAt(point);
+                }}
+                onMouseUp={() => setIsErasing(false)}
               >
                 <Layer>
+                  <Rect width={stageSize.width} height={stageSize.height} fill={backgroundColor} listening={false} />
                   <KonvaImage
                     image={imageEl}
                     width={stageSize.width}
@@ -489,6 +640,72 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, i
 
           {panelOpen && (
             <div className="px-3 pb-4 space-y-4">
+              <div className="border-b border-border pb-4 space-y-3">
+                <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5 text-primary" />
+                  Фон
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start gap-2"
+                  onClick={handleRemoveBackground}
+                  disabled={processingLocal || !imageEl}
+                  title="Удаляет фон и оставляет товар на прозрачном PNG"
+                >
+                  {processingLocal ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eraser className="w-4 h-4" />}
+                  Удалить фон · 1 ⭐
+                </Button>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground">Заливка фона · 0,5 ⭐</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={backgroundColor}
+                      onChange={(e) => setBackgroundColor(e.target.value)}
+                      className="w-8 h-8 rounded border border-border cursor-pointer"
+                      title="Выбрать цвет фона"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleFillBackground(backgroundColor)}
+                      disabled={processingLocal || !imageEl}
+                    >
+                      Залить цветом
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Button
+                    variant={eraserMode ? "default" : "outline"}
+                    size="sm"
+                    className="w-full justify-start gap-2"
+                    onClick={eraserMode ? () => setEraserMode(false) : applyEraser}
+                    disabled={processingLocal || !imageEl}
+                    title="Сотрите лишние участки прямо на изображении"
+                  >
+                    <Eraser className="w-4 h-4" />
+                    {eraserMode ? "Ластик активен" : "Ластик · 1 ⭐"}
+                  </Button>
+                  {eraserMode && (
+                    <label className="block text-xs text-muted-foreground">
+                      Размер кисти: {brushSize}px
+                      <input
+                        type="range"
+                        min="8"
+                        max="120"
+                        step="4"
+                        value={brushSize}
+                        onChange={(e) => setBrushSize(Number(e.target.value))}
+                        className="w-full mt-1"
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+
               <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={addText}>
                 <Type className="w-4 h-4" />
                 Добавить текст
