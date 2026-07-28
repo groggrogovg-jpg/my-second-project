@@ -740,7 +740,7 @@ export default function Home() {
               <button className="w-full flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:border-primary/50 hover:bg-primary/3 transition-all text-sm group" data-testid="link-pricing-card">
                 <div className="text-left">
                   <p className="font-medium text-foreground">Купить пакет карточек</p>
-                  <p className="text-xs text-muted-foreground">от 199 ₽ за 3 карточки</p>
+                  <p className="text-xs text-muted-foreground">от 199 ₽ за 5 карточки</p>
                 </div>
                 <ShoppingCart className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
               </button>
@@ -1279,6 +1279,11 @@ function ModelPills({ selected, onChange, isAuth, currentBalance, nano2Balance, 
             >
               <span className="font-semibold text-foreground leading-tight text-center mb-0.5">{m.name}</span>
               <span className="text-primary font-medium">{m.pricePerCard} ₽/кард</span>
+                {m.id === "nano-banana-pro" && proBalance === 0 && (
+                  <span className="text-[10px] text-muted-foreground mt-1 leading-tight">
+                    Доступен при покупке тарифа
+                  </span>
+                )}
               {isAuth && isSelected && (
                 <span className="text-[10px] text-muted-foreground mt-0.5">
                   {currentBalance > 0 ? `${currentBalance} осталось` : "0 карточек"}
@@ -1288,9 +1293,6 @@ function ModelPills({ selected, onChange, isAuth, currentBalance, nano2Balance, 
           );
         })}
       </div>
-      {proBalance === 0 && (
-        <p className="text-[10px] text-muted-foreground mt-1.5">Доступен при покупке тарифа</p>
-      )}
       {selected === "nano-banana-2" && nano2Balance === 0 && trialNano2Count >= 2 && (
         <p className="text-xs text-destructive mt-1.5">Лимит пробных карточек исчерпан. Для продолжения приобретите платный пакет</p>
       )}
