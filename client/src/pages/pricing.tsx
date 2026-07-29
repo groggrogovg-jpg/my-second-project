@@ -32,7 +32,7 @@ export default function Pricing() {
             Покупайте карточки пакетами — чем больше, тем дешевле. Без подписок, без автосписаний.
           </p>
           <div className="inline-flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-2.5 text-sm">
-            <span className="text-muted-foreground">3 карточек бесплатно при регистрации</span>
+            <span className="text-muted-foreground">2 карточки бесплатно при регистрации</span>
             <Badge variant="secondary" className="text-xs">Пробный режим</Badge>
           </div>
         </div>
@@ -50,7 +50,7 @@ export default function Pricing() {
             >
               <Zap className="w-3.5 h-3.5" />
               Nano Banana 2
-              <span className="text-xs text-muted-foreground font-normal">от 35 ₽/шт</span>
+                  <span className="text-xs text-muted-foreground font-normal">от 35 ₽/шт</span>
             </button>
             <button
               data-testid="tab-pro"
@@ -63,7 +63,7 @@ export default function Pricing() {
             >
               <Crown className="w-3.5 h-3.5" />
               Nano Banana Pro
-              <span className="text-xs text-muted-foreground font-normal">от 55 ₽/шт</span>
+                  <span className="text-xs text-muted-foreground font-normal">от 55 ₽/шт</span>
             </button>
           </div>
         </div>
@@ -268,8 +268,14 @@ function PackagesGrid({
             <ul className="space-y-1.5">
               <li className="flex items-center gap-2 text-xs">
                 <Check className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
-                <span>{pkg.cards} генераций</span>
+                <span>{pkg.cards === 10 ? "11 генераций (10 + 1 в подарок)" : `${pkg.cards} генераций`}</span>
               </li>
+              {pkg.cards === 10 && (
+                <li className="flex items-center gap-2 text-xs">
+                  <span aria-hidden="true">🎁</span>
+                  <span>При покупке 10 карточек вы получаете 11 карточек (1 в подарок)</span>
+                </li>
+              )}
               <li className="flex items-center gap-2 text-xs">
                 <Check className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
                 <span>{model === "pro" ? "2K качество" : "1K качество"}</span>

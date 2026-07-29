@@ -90,12 +90,12 @@ const PLAN_DATA: Record<string, { price: number; starsIncluded: number; name: st
 };
 
 const PACKAGE_DATA: Record<string, { price: number; cardsIncluded: number; modelType: "nano2" | "pro"; name: string }> = {
-  "nano2-5":   { price: 199,  cardsIncluded: 5,   modelType: "nano2", name: "Nano Banana 2 — 5 карточек" },
-  "nano2-10":  { price: 379,  cardsIncluded: 10,  modelType: "nano2", name: "Nano Banana 2 — 10 карточек" },
+  "nano2-5":   { price: 349,  cardsIncluded: 5,   modelType: "nano2", name: "Nano Banana 2 — 5 карточек" },
+  "nano2-10":  { price: 499,  cardsIncluded: 11,  modelType: "nano2", name: "Nano Banana 2 — 10 карточек (+1 в подарок)" },
   "nano2-50":  { price: 1790, cardsIncluded: 50,  modelType: "nano2", name: "Nano Banana 2 — 50 карточек" },
   "nano2-100": { price: 3490, cardsIncluded: 100, modelType: "nano2", name: "Nano Banana 2 — 100 карточек" },
-  "pro-5":     { price: 299,  cardsIncluded: 5,   modelType: "pro",   name: "Nano Banana Pro — 5 карточек" },
-  "pro-10":    { price: 579,  cardsIncluded: 10,  modelType: "pro",   name: "Nano Banana Pro — 10 карточек" },
+  "pro-5":     { price: 399,  cardsIncluded: 5,   modelType: "pro",   name: "Nano Banana Pro — 5 карточек" },
+  "pro-10":    { price: 599,  cardsIncluded: 11,  modelType: "pro",   name: "Nano Banana Pro — 10 карточек (+1 в подарок)" },
   "pro-50":    { price: 2790, cardsIncluded: 50,  modelType: "pro",   name: "Nano Banana Pro — 50 карточек" },
   "pro-100":   { price: 5490, cardsIncluded: 100, modelType: "pro",   name: "Nano Banana Pro — 100 карточек" },
 };

@@ -177,15 +177,15 @@ export function starsToGenerations(stars: number) {
 }
 
 export const NANO2_PACKAGES = [
-  { id: "nano2-5", cards: 5, price: 199, perCard: 39.8, saving: 0, popular: false },
-  { id: "nano2-10", cards: 10, price: 379, perCard: 37.9, saving: 5, popular: true },
+  { id: "nano2-5", cards: 5, price: 349, perCard: 69.8, saving: 0, popular: false },
+  { id: "nano2-10", cards: 10, price: 499, perCard: 45.4, saving: 5, popular: true },
   { id: "nano2-50", cards: 50, price: 1790, perCard: 35.8, saving: 10, popular: false },
   { id: "nano2-100", cards: 100, price: 3490, perCard: 34.9, saving: 13, popular: false },
 ] as const;
 
 export const PRO_PACKAGES = [
-  { id: "pro-5", cards: 5, price: 299, perCard: 59.8, saving: 0, popular: false },
-  { id: "pro-10", cards: 10, price: 579, perCard: 57.9, saving: 3, popular: true },
+  { id: "pro-5", cards: 5, price: 399, perCard: 79.8, saving: 0, popular: false },
+  { id: "pro-10", cards: 10, price: 599, perCard: 54.5, saving: 3, popular: true },
   { id: "pro-50", cards: 50, price: 2790, perCard: 55.8, saving: 7, popular: false },
   { id: "pro-100", cards: 100, price: 5490, perCard: 54.9, saving: 8, popular: false },
 ] as const;

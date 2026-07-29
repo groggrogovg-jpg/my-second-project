@@ -740,7 +740,7 @@ export default function Home() {
               <button className="w-full flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:border-primary/50 hover:bg-primary/3 transition-all text-sm group" data-testid="link-pricing-card">
                 <div className="text-left">
                   <p className="font-medium text-foreground">Купить пакет карточек</p>
-                  <p className="text-xs text-muted-foreground">от 199 ₽ за 5 карточки</p>
+                  <p className="text-xs text-muted-foreground">от 349 ₽ за 5 карточек</p>
                 </div>
                 <ShoppingCart className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
               </button>
