@@ -546,8 +546,9 @@ export class MemStorage implements IStorage {
     syncModelBalances(user);
     if (record.cardsIncluded > 0 && record.modelType) {
       const sub = record.modelType === "pro" ? user.proSubscription : user.nano2Subscription;
-      // Новый пакет заменяет старые карточки для этой модели; срок — 30 дней с момента покупки.
-      sub.cards = record.cardsIncluded;
+      // Пакет добавляется к уже купленным карточкам; срок действия продлевается
+      // на 30 дней с момента подтверждения покупки.
+      sub.cards = effectiveCards(sub) + record.cardsIncluded;
       sub.expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
       user.starsBalance += record.cardsIncluded;
       syncModelBalances(user);

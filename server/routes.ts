@@ -1056,6 +1056,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const confirmed = await storage.confirmPayment(label);
       if (confirmed) {
         console.log(`[payment/webhook] ✓ payment confirmed label=${label} operationId=${operation_id} amount=${amount}`);
+        // Начисляем пакет сразу из webhook. Возврат пользователя на successURL
+        // не должен быть обязательным условием для пополнения баланса.
+        const ownerId = confirmed.userId || (await storage.getAppUserByUsername(confirmed.username))?.id;
+        if (ownerId && !confirmed.credited) {
+          const credited = await storage.creditConfirmedPayment(label, ownerId);
+          console.log(`[payment/webhook] ${credited ? "✓ credited" : "⚠ credit skipped"} label=${label} userId=${ownerId}`);
+        } else if (!ownerId) {
+          console.warn(`[payment/webhook] ⚠ payment has no user owner label=${label} username=${confirmed.username || "empty"}`);
+        }
       } else {
         console.warn(`[payment/webhook] ⚠ payment label not found in storage: ${label}`);
       }
@@ -1085,7 +1094,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.json({ paid: false, found: true });
     }
 
-    const userId = req.session?.userId;
+    // При возврате от платёжной системы сессия может быть потеряна.
+    // В таком случае используем владельца, сохранённого при создании платежа.
+    const userId = req.session?.userId || payment.userId || (await storage.getAppUserByUsername(payment.username))?.id;
     if (userId && !payment.credited) {
       const credited = await storage.creditConfirmedPayment(label, userId);
       if (credited) {
@@ -1093,7 +1104,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     }
 
-    console.log(`[payment/verify] ✓ label=${label} confirmed cards=${payment.cardsIncluded} model=${payment.modelType} stars=${payment.starsToAdd}`);
+    console.log(`[payment/verify] ✓ label=${label} confirmed cards=${payment.cardsIncluded} model=${payment.modelType} stars=${payment.starsToAdd} credited=${payment.credited}`);
     return res.json({
       paid: true,
       found: true,
