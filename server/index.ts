@@ -4,9 +4,12 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { initDb } from "./db";
+import connectPgSimple from "connect-pg-simple";
+import { pool } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
+const PgSession = connectPgSimple(session);
 
 declare module "http" {
   interface IncomingMessage {
@@ -23,6 +26,11 @@ declare module "express-session" {
 
 app.use(
   session({
+    store: new PgSession({
+      pool,
+      tableName: "session",
+      createTableIfMissing: false,
+    }),
     secret: process.env.SESSION_SECRET || "kardomatik-secret-2025",
     resave: false,
     saveUninitialized: false,

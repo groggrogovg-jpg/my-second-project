@@ -41,6 +41,17 @@ export async function initDb(): Promise<void> {
       user_id       VARCHAR,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS "session" (
+      sid    VARCHAR NOT NULL COLLATE "default",
+      sess   JSON NOT NULL,
+      expire TIMESTAMP(6) NOT NULL
+    )
+    WITH (OIDS=FALSE);
+
+    ALTER TABLE "session" DROP CONSTRAINT IF EXISTS "session_pkey";
+    ALTER TABLE "session" ADD CONSTRAINT "session_pkey" PRIMARY KEY (sid);
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" (expire);
   `);
   console.log("[db] tables ready: app_users, payments");
 }
