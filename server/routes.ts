@@ -800,6 +800,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/proxy-image", async (req: Request, res: Response) => {
     const url = req.query.url as string;
     if (!url) return res.status(400).json({ error: "url required" });
+    if (!isTrustedImageUrl(url)) {
+      return res.status(403).json({ error: "URL не разрешён" });
+    }
     try {
       // Поддержка data-URL для watermarked trial-изображений, сгенерированных на сервере.
       if (url.startsWith("data:")) {
