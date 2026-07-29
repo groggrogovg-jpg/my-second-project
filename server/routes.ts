@@ -26,6 +26,7 @@ import bcrypt from "bcrypt";
 import { sendPasswordResetEmail } from "./email";
 
 const YM_NOTIFY_SECRET = process.env.YOOMONEY_NOTIFICATION_SECRET || "";
+const YM_ACCESS_TOKEN = process.env.YOOMONEY_ACCESS_TOKEN || "";
 const DEV_PROMO_CODE = process.env.DEV_PROMO_CODE || "DEV100";
 
 function adminOnly(req: Request, res: Response, next: Function) {
@@ -99,6 +100,45 @@ const PACKAGE_DATA: Record<string, { price: number; cardsIncluded: number; model
   "pro-50":    { price: 2790, cardsIncluded: 50,  modelType: "pro",   name: "Nano Banana Pro — 50 карточек" },
   "pro-100":   { price: 5490, cardsIncluded: 100, modelType: "pro",   name: "Nano Banana Pro — 100 карточек" },
 };
+
+// Payment records currently live in process memory. Keep the package and owner
+// in the signed payment label so a webhook can reconstruct a pending payment
+// after a process restart (the webhook signature is still the source of trust).
+function parsePackagePaymentLabel(label: string): { packageId: string; userId: string } | null {
+  const match = label.match(/^pkg-(nano2-5|nano2-10|nano2-50|nano2-100|pro-5|pro-10|pro-50|pro-100)-(.+)-\d+$/);
+  if (!match || !PACKAGE_DATA[match[1]]) return null;
+  return { packageId: match[1], userId: match[2] };
+}
+
+async function verifyYooMoneyPayment(label: string, expectedAmount: string): Promise<{ operationId: string; amount: string } | null> {
+  if (!YM_ACCESS_TOKEN) {
+    console.warn("[payment/check] YOOMONEY_ACCESS_TOKEN is not configured");
+    return null;
+  }
+  try {
+    const response = await axios.post(
+      "https://yoomoney.ru/api/operation-history",
+      new URLSearchParams({ records: "100", type: "deposition" }).toString(),
+      {
+        headers: {
+          Authorization: `Bearer ${YM_ACCESS_TOKEN}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        timeout: 10000,
+      },
+    );
+    const operations = Array.isArray(response.data?.operations) ? response.data.operations : [];
+    const match = operations.find((operation: any) =>
+      operation.label === label &&
+      operation.status === "success" &&
+      Number(operation.amount).toFixed(2) === Number(expectedAmount).toFixed(2),
+    );
+    return match ? { operationId: String(match.operation_id || ""), amount: String(match.amount) } : null;
+  } catch (error: any) {
+    console.error(`[payment/check] YooMoney API error: ${error.response?.status || error.message}`);
+    return null;
+  }
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -911,6 +951,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // New package-based flow
       if (packageId) {
+        const sessionUserId = req.session?.userId;
+        if (!sessionUserId) {
+          return res.status(401).json({ error: "Войдите в аккаунт перед оплатой" });
+        }
+        const sessionUser = await storage.getAppUserById(sessionUserId);
+        if (!sessionUser) {
+          return res.status(401).json({ error: "Пользователь не найден. Войдите снова." });
+        }
         console.log(`[payment/create] ▶ START packageId=${packageId}`);
         const pkg = PACKAGE_DATA[packageId];
         if (!pkg) {
@@ -920,9 +968,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         console.log(`[payment/create] ✓ package found: ${pkg.name} price=${pkg.price} cards=${pkg.cardsIncluded} model=${pkg.modelType}`);
 
         const amount = getTestPrice(pkg.price);
-        const label = `pkg-${packageId}-${Date.now()}`;
+        const label = `pkg-${packageId}-${sessionUserId}-${Date.now()}`;
         const comment = `КардоМатик: ${pkg.name}`;
-        const username = (req.body?.username as string) || (req.session as any).username || "";
+        const username = sessionUser.username;
         console.log(`[payment/create] ✓ amount=${amount}₽ label=${label} user=${username || "anon"}`);
 
         const wallet = process.env.VITE_YOOMONEY_WALLET || "";
@@ -943,7 +991,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
         const url = `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`;
 
-        await storage.recordPayment({ label, starsToAdd: 0, cardsIncluded: pkg.cardsIncluded, modelType: pkg.modelType, operationId: "", amount: String(amount), username, userId: req.session?.userId || null });
+        await storage.recordPayment({ label, starsToAdd: 0, cardsIncluded: pkg.cardsIncluded, modelType: pkg.modelType, operationId: "", amount: String(amount), username, userId: sessionUserId });
         console.log(`[payment/create] ✓ DONE returning url for package`);
         return res.json({ url, label, cards: pkg.cardsIncluded, model: pkg.modelType });
       }
@@ -1051,9 +1099,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(200).send("ok");
       }
 
-      // Save operation_id and confirm payment
+      // Save operation_id and confirm payment. If the process restarted after
+      // payment creation, rebuild the pending package record from the label.
       await storage.updatePaymentOperationId(label, operation_id || "");
-      const confirmed = await storage.confirmPayment(label);
+      let confirmed = await storage.confirmPayment(label);
+      if (!confirmed) {
+        const recovered = parsePackagePaymentLabel(label);
+        const packageData = recovered ? PACKAGE_DATA[recovered.packageId] : undefined;
+        if (recovered && packageData) {
+          const paidAmount = Number(amount);
+          if (Number.isFinite(paidAmount) && Math.abs(paidAmount - getTestPrice(packageData.price)) > 0.01) {
+            console.warn(`[payment/webhook] ✗ amount mismatch label=${label} expected=${packageData.price} got=${amount}`);
+            return res.status(400).send("amount mismatch");
+          }
+          await storage.recordPayment({
+            label,
+            starsToAdd: 0,
+            cardsIncluded: packageData.cardsIncluded,
+            modelType: packageData.modelType,
+            operationId: operation_id || "",
+            amount: String(amount || packageData.price),
+            username: "",
+            userId: recovered.userId,
+          });
+          confirmed = await storage.confirmPayment(label);
+          console.log(`[payment/webhook] ✓ recovered payment record label=${label}`);
+        }
+      }
       if (confirmed) {
         console.log(`[payment/webhook] ✓ payment confirmed label=${label} operationId=${operation_id} amount=${amount}`);
         // Начисляем пакет сразу из webhook. Возврат пользователя на successURL
@@ -1083,7 +1155,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const label = req.query.label as string;
     if (!label) return res.status(400).json({ error: "label required" });
 
-    const payment = await storage.getPaymentByLabel(label);
+    let payment = await storage.getPaymentByLabel(label);
+    // Webhook delivery is not guaranteed. When the customer returns to the
+    // success page, verify the operation directly through YooMoney as well.
+    if (payment && !payment.confirmed) {
+      const operation = await verifyYooMoneyPayment(label, payment.amount);
+      if (operation) {
+        await storage.updatePaymentOperationId(label, operation.operationId);
+        payment = await storage.confirmPayment(label);
+      }
+    }
+
+    // A process restart can remove the in-memory payment record. For package
+    // labels, recover the pending order only after YooMoney confirms the exact
+    // package amount.
+    if (!payment) {
+      const recovered = parsePackagePaymentLabel(label);
+      const packageData = recovered ? PACKAGE_DATA[recovered.packageId] : undefined;
+      if (recovered && packageData) {
+        const operation = await verifyYooMoneyPayment(label, String(getTestPrice(packageData.price)));
+        if (operation) {
+          await storage.recordPayment({
+            label,
+            starsToAdd: 0,
+            cardsIncluded: packageData.cardsIncluded,
+            modelType: packageData.modelType,
+            operationId: operation.operationId,
+            amount: operation.amount,
+            username: "",
+            userId: recovered.userId,
+          });
+          payment = await storage.confirmPayment(label);
+        }
+      }
+    }
+
     if (!payment) {
       console.log(`[payment/verify] ✗ label not found: ${label}`);
       return res.json({ paid: false, found: false });

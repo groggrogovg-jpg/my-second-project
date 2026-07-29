@@ -95,16 +95,6 @@ export default function PaymentSuccess() {
       rawModel === "nano2" || rawModel === "pro" ? rawModel : "";
     const starsFromUrl = Number(params.get("stars") || "0");
 
-    const fallbackToUrl = async () => {
-      if (cardsFromUrl > 0 && modelFromUrl) {
-        await creditCards(cardsFromUrl, modelFromUrl);
-      } else if (starsFromUrl > 0) {
-        creditStars(starsFromUrl);
-      } else {
-        setVerifyFailed(true);
-      }
-    };
-
     const poll = async () => {
       try {
         const r = await fetch(`/api/payment/verify?label=${encodeURIComponent(label)}`);
@@ -128,9 +118,9 @@ export default function PaymentSuccess() {
         if (attemptsRef.current >= POLL_MAX_ATTEMPTS) {
           setVerifying(false);
           if (pollRef.current) clearTimeout(pollRef.current);
-          // Если webhook не пришёл (напр. приложение ещё не опубликовано),
-          // зачисляем по URL-параметрам как fallback
-          fallbackToUrl();
+          // Не начисляем по URL без подтверждения webhook: параметры возврата
+          // можно подделать, а источником истины является серверный платёж.
+          setVerifyFailed(true);
           return;
         }
 
@@ -140,7 +130,7 @@ export default function PaymentSuccess() {
         if (attemptsRef.current >= POLL_MAX_ATTEMPTS) {
           setVerifying(false);
           if (pollRef.current) clearTimeout(pollRef.current);
-          fallbackToUrl();
+          setVerifyFailed(true);
           return;
         }
         pollRef.current = setTimeout(poll, POLL_INTERVAL_MS);
