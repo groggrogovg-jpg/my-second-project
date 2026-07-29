@@ -118,22 +118,60 @@ async function verifyYooMoneyPayment(label: string, expectedAmount: string): Pro
   try {
     const response = await axios.post(
       "https://yoomoney.ru/api/operation-history",
-      new URLSearchParams({ records: "100", type: "deposition" }).toString(),
+      new URLSearchParams({
+        records: "100",
+        type: "deposition payment",
+        direction: "in",
+        label,
+      }).toString(),
       {
         headers: {
           Authorization: `Bearer ${YM_ACCESS_TOKEN}`,
           "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
         },
         timeout: 10000,
       },
     );
-    const operations = Array.isArray(response.data?.operations) ? response.data.operations : [];
-    const match = operations.find((operation: any) =>
-      operation.label === label &&
-      operation.status === "success" &&
-      Number(operation.amount).toFixed(2) === Number(expectedAmount).toFixed(2),
-    );
-    return match ? { operationId: String(match.operation_id || ""), amount: String(match.amount) } : null;
+    const rawOperations = response.data?.operations;
+    const operations = Array.isArray(rawOperations)
+      ? rawOperations
+      : rawOperations && typeof rawOperations === "object"
+        ? Object.values(rawOperations)
+        : [];
+    const expected = Number(expectedAmount);
+    const match = operations.find((operation: any) => {
+      const operationLabel = String(operation?.label ?? "");
+      const status = String(operation?.status ?? "").toLowerCase();
+      const type = String(operation?.type ?? "").toLowerCase();
+      const direction = String(operation?.direction ?? "").toLowerCase();
+      const amount = Number(operation?.amount);
+      return operationLabel === label &&
+        (status === "success" || status === "completed") &&
+        (!direction || direction === "in") &&
+        (!type || type === "deposition" || type === "incoming-transfer") &&
+        Number.isFinite(amount) &&
+        Number.isFinite(expected) &&
+        // YooMoney's operation history contains the net amount credited to
+        // the wallet, after its commission. The payment label is generated
+        // server-side and is the primary binding to this order.
+        amount > 0 &&
+        amount <= expected + 0.01 &&
+        amount >= expected * 0.9;
+    });
+    if (operations.length > 0) {
+      console.log(`[payment/check] candidates=${JSON.stringify(operations.slice(0, 5).map((operation: any) => ({
+        status: operation?.status,
+        direction: operation?.direction,
+        type: operation?.type,
+        amount: operation?.amount,
+        hasLabel: Boolean(operation?.label),
+        labelMatches: operation?.label === label,
+      })))}`
+      );
+    }
+    console.log(`[payment/check] label=${label} operations=${operations.length} matched=${Boolean(match)}`);
+    return match ? { operationId: String(match.operation_id || match.operationId || ""), amount: String(match.amount) } : null;
   } catch (error: any) {
     console.error(`[payment/check] YooMoney API error: ${error.response?.status || error.message}`);
     return null;
@@ -1108,8 +1146,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const packageData = recovered ? PACKAGE_DATA[recovered.packageId] : undefined;
         if (recovered && packageData) {
           const paidAmount = Number(amount);
-          if (Number.isFinite(paidAmount) && Math.abs(paidAmount - getTestPrice(packageData.price)) > 0.01) {
-            console.warn(`[payment/webhook] ✗ amount mismatch label=${label} expected=${packageData.price} got=${amount}`);
+           const expectedAmount = getTestPrice(packageData.price);
+           if (Number.isFinite(paidAmount) && (paidAmount <= 0 || paidAmount > expectedAmount + 0.01 || paidAmount < expectedAmount * 0.9)) {
+             console.warn(`[payment/webhook] ✗ amount mismatch label=${label} expected=${expectedAmount} got=${amount}`);
             return res.status(400).send("amount mismatch");
           }
           await storage.recordPayment({
@@ -1203,20 +1242,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // При возврате от платёжной системы сессия может быть потеряна.
     // В таком случае используем владельца, сохранённого при создании платежа.
     const userId = req.session?.userId || payment.userId || (await storage.getAppUserByUsername(payment.username))?.id;
+    let creditedUser: Awaited<ReturnType<typeof storage.getAppUserById>> | null = undefined;
     if (userId && !payment.credited) {
-      const credited = await storage.creditConfirmedPayment(label, userId);
-      if (credited) {
+      creditedUser = await storage.creditConfirmedPayment(label, userId);
+      if (creditedUser) {
         console.log(`[payment/verify] ✓ credited label=${label} to userId=${userId}`);
+      } else {
+        console.warn(`[payment/verify] ⚠ confirmed payment could not be credited label=${label} userId=${userId}`);
       }
     }
 
-    console.log(`[payment/verify] ✓ label=${label} confirmed cards=${payment.cardsIncluded} model=${payment.modelType} stars=${payment.starsToAdd} credited=${payment.credited}`);
+    const latestPayment = await storage.getPaymentByLabel(label);
+    const latestUser = creditedUser || (userId ? await storage.getAppUserById(userId) : undefined);
+    const credited = Boolean(latestPayment?.credited);
+    console.log(`[payment/verify] ✓ label=${label} confirmed cards=${payment.cardsIncluded} model=${payment.modelType} stars=${payment.starsToAdd} credited=${credited}`);
     return res.json({
       paid: true,
       found: true,
       cards: payment.cardsIncluded,
       model: payment.modelType,
       stars: payment.starsToAdd,
+      credited,
+      balance: latestUser
+        ? {
+            nano2: latestUser.nano2Balance,
+            pro: latestUser.proBalance,
+            stars: latestUser.starsBalance,
+          }
+        : null,
     });
   });
 
