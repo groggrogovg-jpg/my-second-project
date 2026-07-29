@@ -1,5 +1,6 @@
 import { type User, type InsertUser, type Generation, type InsertGeneration } from "@shared/schema";
 import { randomUUID, createHash } from "crypto";
+import { pool } from "./db";
 
 // Полный аккаунт пользователя на сервере (расширяет User)
 // Примечание: username хранит адрес email — единственный идентификатор аккаунта.
@@ -14,11 +15,8 @@ export interface AppUser extends User {
   nano2Balance: number;
   proBalance: number;
   starsBalance: number;
-  // Подписки на пакеты карточек по моделям. Срок действия — 30 дней с момента покупки.
-  // При покупке нового пакета старые карточки для этой модели сгорают.
   nano2Subscription: ModelSubscription;
   proSubscription: ModelSubscription;
-  // Независимые флаги бесплатной пробной попытки для каждой функции
   trialNano2Used: boolean;
   trialNano2Count: number;
   trialProUsed: boolean;
@@ -53,8 +51,6 @@ export interface PaymentRecord {
   amount: string;
   confirmed: boolean;
   username: string;
-  // Аккаунт, которому принадлежит платёж (устанавливается при создании, если пользователь авторизован).
-  // Начисление баланса разрешено только владельцу и только один раз (см. `credited`).
   userId: string | null;
   credited: boolean;
   createdAt: Date;
@@ -62,7 +58,6 @@ export interface PaymentRecord {
 
 export interface ServerUser {
   username: string;
-  // ID аккаунта (AppUser), если он уже зарегистрирован; null для legacy-записей без аккаунта.
   id: string | null;
   registeredAt: Date;
   generationCount: number;
@@ -112,10 +107,7 @@ export interface IStorage {
   updateStarsBalance(id: string, delta: number): Promise<void>;
   resetUserPassword(username: string, passwordHash: string): Promise<boolean>;
   markTrialUsed(id: string, feature: TrialFeature): Promise<void>;
-  // Атомарно проверяет и списывает право на генерацию (баланс или пробная попытка).
-  // Возвращает null, если ни баланса, ни пробной попытки нет (запрос должен быть отклонён).
   consumeEntitlement(id: string, feature: TrialFeature): Promise<{ usedTrial: boolean } | null>;
-  // Откатывает списание, сделанное consumeEntitlement, если генерация не удалась.
   refundEntitlement(id: string, feature: TrialFeature, usedTrial: boolean): Promise<void>;
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -131,24 +123,17 @@ export interface IStorage {
   getPaymentByLabel(label: string): Promise<PaymentRecord | undefined>;
   confirmPayment(label: string): Promise<PaymentRecord | undefined>;
   listPayments(): Promise<PaymentRecord[]>;
-  // Атомарно начисляет баланс из подтверждённого платежа владельцу-аккаунту и помечает его начисленным.
-  // Возвращает null, если платёж не найден/не подтверждён/уже начислен/принадлежит другому пользователю.
   creditConfirmedPayment(label: string, userId: string): Promise<AppUser | null>;
-  // Начисляет баланс разработчика по проверенному промокоду (проверка кода — на сервере).
   grantDeveloperCredit(userId: string, nano2: number, pro: number): Promise<AppUser | undefined>;
-  // Немедленно начисляет баланс существующему аккаунту (admin-панель). Возвращает undefined, если аккаунт не найден.
   creditAppUserBalanceByUsername(username: string, model: "nano2" | "pro", amount: number): Promise<AppUser | undefined>;
-  // Server-side user tracking
   trackUser(username: string): Promise<ServerUser>;
   getServerUser(username: string): Promise<ServerUser | undefined>;
   getAllServerUsers(): Promise<ServerUser[]>;
   incrementUserGenerations(username: string): Promise<void>;
   addPendingCredits(username: string, nano2: number, pro: number): Promise<void>;
   consumePendingCredits(username: string): Promise<{ nano2: number; pro: number }>;
-  // Error logs
   addErrorLog(log: Omit<ErrorLog, "id" | "createdAt">): Promise<ErrorLog>;
   getErrorLogs(): Promise<ErrorLog[]>;
-  // Support
   getOrCreateSupportChat(telegramUserId: string, userId?: string): Promise<SupportChat>;
   getSupportChat(id: string): Promise<SupportChat | undefined>;
   getSupportChatByTelegramId(telegramUserId: string): Promise<SupportChat | undefined>;
@@ -160,30 +145,79 @@ export interface IStorage {
   countUnreadMessages(chatId: string): Promise<number>;
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Helper: convert a PostgreSQL row → AppUser
+// ────────────────────────────────────────────────────────────────────────────
+function rowToAppUser(row: Record<string, any>): AppUser {
+  const nano2Sub: ModelSubscription = {
+    cards: Number(row.nano2_cards ?? 0),
+    expiresAt: row.nano2_expires_at ? new Date(row.nano2_expires_at) : new Date(0),
+  };
+  const proSub: ModelSubscription = {
+    cards: Number(row.pro_cards ?? 0),
+    expiresAt: row.pro_expires_at ? new Date(row.pro_expires_at) : new Date(0),
+  };
+  const user: AppUser = {
+    id: row.id,
+    username: row.username,
+    password: row.password_hash,
+    email: row.email,
+    passwordHash: row.password_hash,
+    nano2Balance: 0,
+    proBalance: 0,
+    starsBalance: Number(row.stars_balance ?? 0),
+    nano2Subscription: nano2Sub,
+    proSubscription: proSub,
+    trialNano2Used: Boolean(row.trial_nano2_used),
+    trialNano2Count: Number(row.trial_nano2_count ?? 0),
+    trialProUsed: Boolean(row.trial_pro_used),
+    trialTryonUsed: Boolean(row.trial_tryon_used),
+    isDeveloper: Boolean(row.is_developer),
+    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+  };
+  syncModelBalances(user);
+  return user;
+}
+
+function rowToPayment(row: Record<string, any>): PaymentRecord {
+  return {
+    label: row.label,
+    starsToAdd: Number(row.stars_to_add ?? 0),
+    cardsIncluded: Number(row.cards_included ?? 0),
+    modelType: row.model_type ?? "",
+    operationId: row.operation_id ?? "",
+    amount: row.amount ?? "0",
+    confirmed: Boolean(row.confirmed),
+    credited: Boolean(row.credited),
+    username: row.username ?? "",
+    userId: row.user_id ?? null,
+    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Main storage class
+// ────────────────────────────────────────────────────────────────────────────
 export class MemStorage implements IStorage {
+  // Non-persistent in-memory stores (generations, sessions, support, logs)
   private users: Map<string, User>;
-  private appUsers: Map<string, AppUser>;
   private generations: Map<string, Generation>;
-  private payments: Map<string, PaymentRecord>;
   private serverUsers: Map<string, ServerUser>;
   private errorLogs: ErrorLog[];
   private supportChats: Map<string, SupportChat>;
   private supportMessages: Map<string, SupportMessage>;
-  // Admin reset tokens (not in IStorage interface — admin-only)
+
+  // Admin state (reset on restart — intentional)
   private adminResetTokens: Map<string, Date>;
   adminOverrideCode: string | null;
-  // Токены восстановления пароля обычных пользователей (не в IStorage — деталь реализации)
-  // Ключ — SHA-256 хеш токена, значение — { email, expiresAt, used }.
-  // Сам токен никогда не хранится в памяти, только его хеш.
+
+  // Password reset tokens (short-lived — ok in memory)
   private passwordResetTokens: Map<string, { email: string; expiresAt: Date; used: boolean }>;
-  // Rate limiting: email → время последнего запроса на восстановление пароля
   private passwordResetRateLimit: Map<string, Date>;
 
   constructor() {
     this.users = new Map();
-    this.appUsers = new Map();
     this.generations = new Map();
-    this.payments = new Map();
     this.serverUsers = new Map();
     this.errorLogs = [];
     this.supportChats = new Map();
@@ -201,12 +235,11 @@ export class MemStorage implements IStorage {
   createPasswordResetToken(email: string): string {
     const rawToken = randomUUID();
     const tokenHash = this.hashToken(rawToken);
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 час
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
     this.passwordResetTokens.set(tokenHash, { email: email.toLowerCase(), expiresAt, used: false });
     return rawToken;
   }
 
-  // Проверяет, можно ли отправить повторное письмо: не чаще 1 раза в 5 минут на email.
   canRequestPasswordReset(email: string): boolean {
     const normalized = email.toLowerCase();
     const last = this.passwordResetRateLimit.get(normalized);
@@ -218,7 +251,6 @@ export class MemStorage implements IStorage {
     this.passwordResetRateLimit.set(email.toLowerCase(), new Date());
   }
 
-  // Возвращает email, если токен валиден, не истёк и не использован, иначе null.
   peekPasswordResetToken(token: string): string | null {
     const tokenHash = this.hashToken(token);
     const entry = this.passwordResetTokens.get(tokenHash);
@@ -242,7 +274,7 @@ export class MemStorage implements IStorage {
     return entry.email;
   }
 
-  createAdminResetToken(): string {
+  generateAdminResetToken(): string {
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
     this.adminResetTokens.set(token, expiresAt);
@@ -266,177 +298,298 @@ export class MemStorage implements IStorage {
     return true;
   }
 
+  // ── AppUser (PostgreSQL) ────────────────────────────────────────────────
+
   async createAppUser(email: string, passwordHash: string): Promise<AppUser> {
     const id = randomUUID();
     const normalizedEmail = email.trim().toLowerCase();
     const now = new Date();
-    const user: AppUser = {
-      id,
-      username: normalizedEmail,
-      email: normalizedEmail,
-      password: passwordHash,
-      passwordHash,
-      nano2Balance: 0,
-      proBalance: 0,
-      starsBalance: 0,
-      nano2Subscription: { cards: 0, expiresAt: now },
-      proSubscription: { cards: 0, expiresAt: now },
-      trialNano2Used: false,
-      trialNano2Count: 0,
-      trialProUsed: false,
-      trialTryonUsed: false,
-      isDeveloper: false,
-      createdAt: now,
-    };
-    this.appUsers.set(id, user);
-    return user;
+    await pool.query(
+      `INSERT INTO app_users
+        (id, username, email, password_hash, nano2_cards, nano2_expires_at,
+         pro_cards, pro_expires_at, stars_balance,
+         trial_nano2_used, trial_nano2_count, trial_pro_used, trial_tryon_used,
+         is_developer, created_at)
+       VALUES ($1,$2,$3,$4,0,$5,0,$5,0,FALSE,0,FALSE,FALSE,FALSE,$5)`,
+      [id, normalizedEmail, normalizedEmail, passwordHash, now]
+    );
+    return rowToAppUser({
+      id, username: normalizedEmail, email: normalizedEmail, password_hash: passwordHash,
+      nano2_cards: 0, nano2_expires_at: now, pro_cards: 0, pro_expires_at: now,
+      stars_balance: 0, trial_nano2_used: false, trial_nano2_count: 0,
+      trial_pro_used: false, trial_tryon_used: false, is_developer: false, created_at: now,
+    });
   }
 
   async getAppUserById(id: string): Promise<AppUser | undefined> {
-    const user = this.appUsers.get(id);
-    if (user) {
-      user.trialNano2Count = Number.isFinite(user.trialNano2Count) ? user.trialNano2Count : (user.trialNano2Used ? 1 : 0);
-      syncModelBalances(user);
-    }
-    return user;
+    const res = await pool.query("SELECT * FROM app_users WHERE id = $1", [id]);
+    if (!res.rows[0]) return undefined;
+    return rowToAppUser(res.rows[0]);
   }
 
   async getAppUserByUsername(username: string): Promise<AppUser | undefined> {
-    const user = Array.from(this.appUsers.values()).find((u) => u.username.toLowerCase() === username.toLowerCase());
-    if (user) {
-      user.trialNano2Count = Number.isFinite(user.trialNano2Count) ? user.trialNano2Count : (user.trialNano2Used ? 1 : 0);
-      syncModelBalances(user);
-    }
-    return user;
+    const res = await pool.query(
+      "SELECT * FROM app_users WHERE LOWER(username) = LOWER($1)", [username]
+    );
+    if (!res.rows[0]) return undefined;
+    return rowToAppUser(res.rows[0]);
   }
 
   async updateAppUserBalances(id: string, nano2: number, pro: number): Promise<void> {
-    const user = this.appUsers.get(id);
-    if (user) {
-      const expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
-      user.nano2Subscription = { cards: Math.max(0, nano2), expiresAt };
-      user.proSubscription = { cards: Math.max(0, pro), expiresAt };
-      syncModelBalances(user);
-    }
+    const expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
+    await pool.query(
+      `UPDATE app_users SET nano2_cards=$1, nano2_expires_at=$2,
+                            pro_cards=$3, pro_expires_at=$2
+       WHERE id=$4`,
+      [Math.max(0, nano2), expiresAt, Math.max(0, pro), id]
+    );
   }
 
   async updateStarsBalance(id: string, delta: number): Promise<void> {
-    const user = this.appUsers.get(id);
-    if (user) {
-      user.starsBalance = Math.max(0, user.starsBalance + delta);
-    }
+    await pool.query(
+      `UPDATE app_users SET stars_balance = GREATEST(0, stars_balance + $1) WHERE id = $2`,
+      [delta, id]
+    );
   }
 
   async consumeEntitlement(id: string, feature: TrialFeature): Promise<{ usedTrial: boolean } | null> {
-    const user = this.appUsers.get(id);
+    const user = await this.getAppUserById(id);
     if (!user) return null;
-    syncModelBalances(user);
+
     if (feature === "nano2") {
       if (effectiveCards(user.nano2Subscription) > 0) {
-        user.nano2Subscription.cards -= 1;
-        syncModelBalances(user);
+        await pool.query("UPDATE app_users SET nano2_cards = nano2_cards - 1 WHERE id = $1", [id]);
         return { usedTrial: false };
       }
       if (!user.trialNano2Used) {
-        user.trialNano2Used = true;
-        user.trialNano2Count = Math.max(1, user.trialNano2Count || 0);
+        await pool.query(
+          "UPDATE app_users SET trial_nano2_used=TRUE, trial_nano2_count=GREATEST(1,trial_nano2_count) WHERE id=$1",
+          [id]
+        );
         return { usedTrial: true };
       }
       if (user.trialNano2Count < 2) {
-        user.trialNano2Count += 1;
+        await pool.query("UPDATE app_users SET trial_nano2_count = trial_nano2_count + 1 WHERE id=$1", [id]);
         return { usedTrial: true };
       }
       return null;
     }
+
     if (feature === "pro") {
       if (effectiveCards(user.proSubscription) > 0) {
-        user.proSubscription.cards -= 1;
-        syncModelBalances(user);
+        await pool.query("UPDATE app_users SET pro_cards = pro_cards - 1 WHERE id = $1", [id]);
         return { usedTrial: false };
       }
       return null;
     }
+
     // tryon
     if (effectiveCards(user.nano2Subscription) > 0) {
-      user.nano2Subscription.cards -= 1;
-      syncModelBalances(user);
+      await pool.query("UPDATE app_users SET nano2_cards = nano2_cards - 1 WHERE id = $1", [id]);
       return { usedTrial: false };
     }
     if (!user.trialTryonUsed) {
-      user.trialTryonUsed = true;
+      await pool.query("UPDATE app_users SET trial_tryon_used=TRUE WHERE id=$1", [id]);
       return { usedTrial: true };
     }
     return null;
   }
 
   async refundEntitlement(id: string, feature: TrialFeature, usedTrial: boolean): Promise<void> {
-    const user = this.appUsers.get(id);
-    if (!user) return;
     if (usedTrial) {
       if (feature === "nano2") {
-        user.trialNano2Count = Math.max(0, user.trialNano2Count - 1);
-        user.trialNano2Used = user.trialNano2Count > 0;
+        await pool.query(
+          `UPDATE app_users SET
+             trial_nano2_count = GREATEST(0, trial_nano2_count - 1),
+             trial_nano2_used  = (GREATEST(0, trial_nano2_count - 1) > 0)
+           WHERE id=$1`,
+          [id]
+        );
+      } else if (feature === "pro") {
+        await pool.query("UPDATE app_users SET trial_pro_used=FALSE WHERE id=$1", [id]);
+      } else {
+        await pool.query("UPDATE app_users SET trial_tryon_used=FALSE WHERE id=$1", [id]);
       }
-      else if (feature === "pro") user.trialProUsed = false;
-      else user.trialTryonUsed = false;
       return;
     }
-    if (feature === "nano2") user.nano2Subscription.cards += 1;
-    else if (feature === "pro") user.proSubscription.cards += 1;
-    else user.nano2Subscription.cards += 1;
-    syncModelBalances(user);
+    if (feature === "nano2") {
+      await pool.query("UPDATE app_users SET nano2_cards = nano2_cards + 1 WHERE id=$1", [id]);
+    } else if (feature === "pro") {
+      await pool.query("UPDATE app_users SET pro_cards = pro_cards + 1 WHERE id=$1", [id]);
+    } else {
+      await pool.query("UPDATE app_users SET nano2_cards = nano2_cards + 1 WHERE id=$1", [id]);
+    }
   }
 
   async grantDeveloperCredit(userId: string, nano2: number, pro: number): Promise<AppUser | undefined> {
-    const user = this.appUsers.get(userId);
-    if (!user) return undefined;
     const expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
-    user.nano2Subscription.cards += nano2;
-    user.nano2Subscription.expiresAt = expiresAt;
-    user.proSubscription.cards += pro;
-    user.proSubscription.expiresAt = expiresAt;
-    user.isDeveloper = true;
-    syncModelBalances(user);
-    return user;
+    const res = await pool.query(
+      `UPDATE app_users SET
+         nano2_cards = nano2_cards + $1, nano2_expires_at = $3,
+         pro_cards   = pro_cards   + $2, pro_expires_at   = $3,
+         is_developer = TRUE
+       WHERE id=$4 RETURNING *`,
+      [nano2, pro, expiresAt, userId]
+    );
+    if (!res.rows[0]) return undefined;
+    return rowToAppUser(res.rows[0]);
   }
 
   async creditAppUserBalanceByUsername(username: string, model: "nano2" | "pro", amount: number): Promise<AppUser | undefined> {
-    const user = Array.from(this.appUsers.values()).find(
-      (u) => u.username.toLowerCase() === username.toLowerCase()
+    const expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
+    const col = model === "pro" ? "pro_cards" : "nano2_cards";
+    const expCol = model === "pro" ? "pro_expires_at" : "nano2_expires_at";
+    const res = await pool.query(
+      `UPDATE app_users SET ${col}=${col}+$1, ${expCol}=$2
+       WHERE LOWER(username)=LOWER($3) RETURNING *`,
+      [amount, expiresAt, username]
     );
-    if (!user) return undefined;
-    const sub = model === "pro" ? user.proSubscription : user.nano2Subscription;
-    sub.cards += amount;
-    sub.expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
-    syncModelBalances(user);
-    return user;
+    if (!res.rows[0]) return undefined;
+    return rowToAppUser(res.rows[0]);
   }
 
   async resetUserPassword(username: string, passwordHash: string): Promise<boolean> {
-    const user = Array.from(this.appUsers.values()).find(
-      (u) => u.username.toLowerCase() === username.toLowerCase()
+    const res = await pool.query(
+      "UPDATE app_users SET password_hash=$1 WHERE LOWER(username)=LOWER($2)",
+      [passwordHash, username]
     );
-    if (!user) return false;
-    user.passwordHash = passwordHash;
-    user.password = passwordHash;
-    this.appUsers.set(user.id, user);
-    return true;
+    return (res.rowCount ?? 0) > 0;
   }
 
   async markTrialUsed(id: string, feature: TrialFeature): Promise<void> {
-    const user = this.appUsers.get(id);
-    if (!user) return;
-    if (feature === "nano2") user.trialNano2Used = true;
-    else if (feature === "pro") user.trialProUsed = true;
-    else if (feature === "tryon") user.trialTryonUsed = true;
+    if (feature === "nano2") {
+      await pool.query("UPDATE app_users SET trial_nano2_used=TRUE WHERE id=$1", [id]);
+    } else if (feature === "pro") {
+      await pool.query("UPDATE app_users SET trial_pro_used=TRUE WHERE id=$1", [id]);
+    } else {
+      await pool.query("UPDATE app_users SET trial_tryon_used=TRUE WHERE id=$1", [id]);
+    }
   }
+
+  // ── Payments (PostgreSQL) ───────────────────────────────────────────────
+
+  async recordPayment(payment: Omit<PaymentRecord, "confirmed" | "credited" | "createdAt">): Promise<PaymentRecord> {
+    const now = new Date();
+    await pool.query(
+      `INSERT INTO payments
+         (label, stars_to_add, cards_included, model_type, operation_id,
+          amount, confirmed, credited, username, user_id, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,FALSE,FALSE,$7,$8,$9)
+       ON CONFLICT (label) DO NOTHING`,
+      [
+        payment.label, payment.starsToAdd, payment.cardsIncluded,
+        payment.modelType, payment.operationId, payment.amount,
+        payment.username, payment.userId ?? null, now,
+      ]
+    );
+    return { ...payment, confirmed: false, credited: false, createdAt: now };
+  }
+
+  async updatePaymentOperationId(label: string, operationId: string): Promise<PaymentRecord | undefined> {
+    const res = await pool.query(
+      "UPDATE payments SET operation_id=$1 WHERE label=$2 RETURNING *",
+      [operationId, label]
+    );
+    if (!res.rows[0]) return undefined;
+    return rowToPayment(res.rows[0]);
+  }
+
+  async getPaymentByLabel(label: string): Promise<PaymentRecord | undefined> {
+    const res = await pool.query("SELECT * FROM payments WHERE label=$1", [label]);
+    if (!res.rows[0]) return undefined;
+    return rowToPayment(res.rows[0]);
+  }
+
+  async confirmPayment(label: string): Promise<PaymentRecord | undefined> {
+    const res = await pool.query(
+      "UPDATE payments SET confirmed=TRUE WHERE label=$1 RETURNING *",
+      [label]
+    );
+    if (!res.rows[0]) return undefined;
+    return rowToPayment(res.rows[0]);
+  }
+
+  async listPayments(): Promise<PaymentRecord[]> {
+    const res = await pool.query("SELECT * FROM payments ORDER BY created_at DESC");
+    return res.rows.map(rowToPayment);
+  }
+
+  async creditConfirmedPayment(label: string, userId: string): Promise<AppUser | null> {
+    // Resolve the actual user: try by ID first, then by username from the payment record.
+    let resolvedId = userId;
+    const userById = await pool.query("SELECT id FROM app_users WHERE id=$1", [userId]);
+    if (!userById.rows[0]) {
+      // User registered in old MemStorage session — look up by email/username stored in payment
+      const payLookup = await pool.query("SELECT username FROM payments WHERE label=$1", [label]);
+      const uname = payLookup.rows[0]?.username;
+      if (uname) {
+        const byName = await pool.query("SELECT id FROM app_users WHERE LOWER(username)=LOWER($1)", [uname]);
+        if (byName.rows[0]) resolvedId = byName.rows[0].id;
+        else return null; // user truly doesn't exist in PostgreSQL
+      } else {
+        return null;
+      }
+    }
+
+    // Atomically lock the payment row: mark credited=TRUE only once.
+    const payRes = await pool.query(
+      `UPDATE payments SET credited=TRUE, user_id=$1
+       WHERE label=$2 AND confirmed=TRUE AND credited=FALSE
+       RETURNING *`,
+      [resolvedId, label]
+    );
+    if (!payRes.rows[0]) return null; // already credited, not confirmed, or not found
+
+    const payment = rowToPayment(payRes.rows[0]);
+    const expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
+
+    if (payment.cardsIncluded > 0 && payment.modelType) {
+      if (payment.modelType === "pro") {
+        const r = await pool.query(
+          `UPDATE app_users SET
+             pro_cards = (CASE WHEN pro_expires_at > NOW() THEN pro_cards ELSE 0 END) + $1,
+             pro_expires_at = $2,
+             stars_balance = stars_balance + $1
+           WHERE id=$3`,
+          [payment.cardsIncluded, expiresAt, resolvedId]
+        );
+        if ((r.rowCount ?? 0) === 0) {
+          // Roll back the credited flag — balance was not applied
+          await pool.query("UPDATE payments SET credited=FALSE WHERE label=$1", [label]);
+          return null;
+        }
+      } else {
+        const r = await pool.query(
+          `UPDATE app_users SET
+             nano2_cards = (CASE WHEN nano2_expires_at > NOW() THEN nano2_cards ELSE 0 END) + $1,
+             nano2_expires_at = $2,
+             stars_balance = stars_balance + $1
+           WHERE id=$3`,
+          [payment.cardsIncluded, expiresAt, resolvedId]
+        );
+        if ((r.rowCount ?? 0) === 0) {
+          await pool.query("UPDATE payments SET credited=FALSE WHERE label=$1", [label]);
+          return null;
+        }
+      }
+    } else if (payment.starsToAdd > 0) {
+      await pool.query(
+        "UPDATE app_users SET stars_balance = stars_balance + $1 WHERE id=$2",
+        [payment.starsToAdd, resolvedId]
+      );
+    }
+
+    return await this.getAppUserById(resolvedId) ?? null;
+  }
+
+  // ── Legacy User (in-memory — used by older code paths) ──────────────────
 
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id);
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find((user) => user.username === username);
+    return Array.from(this.users.values()).find((u) => u.username === username);
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
@@ -445,6 +598,8 @@ export class MemStorage implements IStorage {
     this.users.set(id, user);
     return user;
   }
+
+  // ── Generations (in-memory) ─────────────────────────────────────────────
 
   async createGeneration(gen: Omit<InsertGeneration, "id" | "createdAt">): Promise<Generation> {
     const id = randomUUID();
@@ -487,7 +642,6 @@ export class MemStorage implements IStorage {
   async listGenerations(filter: { userId?: string; sessionId?: string }): Promise<Generation[]> {
     const now = new Date();
     let values = Array.from(this.generations.values()).filter((g) => {
-      // Исключаем просроченные
       if (g.expiresAt && new Date(g.expiresAt) < now) return false;
       return true;
     });
@@ -496,9 +650,7 @@ export class MemStorage implements IStorage {
     } else if (filter.sessionId) {
       values = values.filter((g) => g.sessionId === filter.sessionId);
     }
-    return values.sort(
-      (a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
-    );
+    return values.sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
   }
 
   async transferSessionGenerations(sessionId: string, userId: string): Promise<number> {
@@ -526,82 +678,15 @@ export class MemStorage implements IStorage {
     return count;
   }
 
-  async recordPayment(payment: Omit<PaymentRecord, "confirmed" | "credited" | "createdAt">): Promise<PaymentRecord> {
-    const record: PaymentRecord = {
-      ...payment,
-      confirmed: false,
-      credited: false,
-      createdAt: new Date(),
-    };
-    this.payments.set(payment.label, record);
-    return record;
-  }
-
-  async creditConfirmedPayment(label: string, userId: string): Promise<AppUser | null> {
-    const record = this.payments.get(label);
-    if (!record || !record.confirmed || record.credited) return null;
-    if (record.userId && record.userId !== userId) return null;
-    const user = this.appUsers.get(userId);
-    if (!user) return null;
-    syncModelBalances(user);
-    if (record.cardsIncluded > 0 && record.modelType) {
-      const sub = record.modelType === "pro" ? user.proSubscription : user.nano2Subscription;
-      // Пакет добавляется к уже купленным карточкам; срок действия продлевается
-      // на 30 дней с момента подтверждения покупки.
-      sub.cards = effectiveCards(sub) + record.cardsIncluded;
-      sub.expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
-      user.starsBalance += record.cardsIncluded;
-      syncModelBalances(user);
-    }
-    if (record.starsToAdd > 0) {
-      user.starsBalance += record.starsToAdd;
-    }
-    record.credited = true;
-    if (!record.userId) record.userId = userId;
-    this.payments.set(label, record);
-    return user;
-  }
-
-  async updatePaymentOperationId(label: string, operationId: string): Promise<PaymentRecord | undefined> {
-    const record = this.payments.get(label);
-    if (!record) return undefined;
-    record.operationId = operationId;
-    this.payments.set(label, record);
-    return record;
-  }
-
-  async getPaymentByLabel(label: string): Promise<PaymentRecord | undefined> {
-    return this.payments.get(label);
-  }
-
-  async confirmPayment(label: string): Promise<PaymentRecord | undefined> {
-    const record = this.payments.get(label);
-    if (!record) return undefined;
-    record.confirmed = true;
-    this.payments.set(label, record);
-    return record;
-  }
-
-  async listPayments(): Promise<PaymentRecord[]> {
-    return Array.from(this.payments.values()).sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
-    );
-  }
+  // ── Server users tracking (in-memory) ───────────────────────────────────
 
   async trackUser(username: string): Promise<ServerUser> {
     const existing = this.serverUsers.get(username);
     if (existing) return existing;
     const user: ServerUser = {
-      username,
-      id: null,
-      registeredAt: new Date(),
-      generationCount: 0,
-      pendingNano2: 0,
-      pendingPro: 0,
-      nano2Balance: 0,
-      proBalance: 0,
-      starsBalance: 0,
-      isDeveloper: false,
+      username, id: null, registeredAt: new Date(),
+      generationCount: 0, pendingNano2: 0, pendingPro: 0,
+      nano2Balance: 0, proBalance: 0, starsBalance: 0, isDeveloper: false,
     };
     this.serverUsers.set(username, user);
     return user;
@@ -612,23 +697,37 @@ export class MemStorage implements IStorage {
   }
 
   async getAllServerUsers(): Promise<ServerUser[]> {
-    const list = Array.from(this.serverUsers.values()).sort(
-      (a, b) => b.registeredAt.getTime() - a.registeredAt.getTime()
-    );
-    return list.map((su) => {
-      const appUser = Array.from(this.appUsers.values()).find(
-        (u) => u.username.toLowerCase() === su.username.toLowerCase()
-      );
-      if (appUser) syncModelBalances(appUser);
+    // Merge in-memory tracking with real balances from PostgreSQL
+    const appUsersRes = await pool.query("SELECT * FROM app_users ORDER BY created_at DESC");
+    const appUsers = appUsersRes.rows.map(rowToAppUser);
+    const appUsersByEmail = new Map(appUsers.map((u) => [u.username.toLowerCase(), u]));
+
+    // Build a combined list: start from registered app users
+    const result: ServerUser[] = appUsers.map((au) => {
+      const su = this.serverUsers.get(au.username.toLowerCase()) ??
+                 this.serverUsers.get(au.username);
       return {
-        ...su,
-        id: appUser?.id ?? null,
-        nano2Balance: appUser?.nano2Balance ?? 0,
-        proBalance: appUser?.proBalance ?? 0,
-        starsBalance: appUser?.starsBalance ?? 0,
-        isDeveloper: appUser?.isDeveloper ?? false,
+        username: au.username,
+        id: au.id,
+        registeredAt: au.createdAt,
+        generationCount: su?.generationCount ?? 0,
+        pendingNano2: su?.pendingNano2 ?? 0,
+        pendingPro: su?.pendingPro ?? 0,
+        nano2Balance: au.nano2Balance,
+        proBalance: au.proBalance,
+        starsBalance: au.starsBalance,
+        isDeveloper: au.isDeveloper,
       };
     });
+
+    // Add any legacy server users not yet registered
+    for (const [, su] of this.serverUsers.entries()) {
+      if (!appUsersByEmail.has(su.username.toLowerCase())) {
+        result.push(su);
+      }
+    }
+
+    return result;
   }
 
   async incrementUserGenerations(username: string): Promise<void> {
@@ -638,16 +737,9 @@ export class MemStorage implements IStorage {
       user.generationCount++;
     } else {
       this.serverUsers.set(username, {
-        username,
-        id: null,
-        registeredAt: new Date(),
-        generationCount: 1,
-        pendingNano2: 0,
-        pendingPro: 0,
-        nano2Balance: 0,
-        proBalance: 0,
-        starsBalance: 0,
-        isDeveloper: false,
+        username, id: null, registeredAt: new Date(),
+        generationCount: 1, pendingNano2: 0, pendingPro: 0,
+        nano2Balance: 0, proBalance: 0, starsBalance: 0, isDeveloper: false,
       });
     }
   }
@@ -664,21 +756,17 @@ export class MemStorage implements IStorage {
 
   async consumePendingCredits(username: string): Promise<{ nano2: number; pro: number }> {
     const user = this.serverUsers.get(username);
-    if (!user || (user.pendingNano2 === 0 && user.pendingPro === 0)) {
-      return { nano2: 0, pro: 0 };
-    }
+    if (!user || (user.pendingNano2 === 0 && user.pendingPro === 0)) return { nano2: 0, pro: 0 };
     const result = { nano2: user.pendingNano2, pro: user.pendingPro };
     user.pendingNano2 = 0;
     user.pendingPro = 0;
     return result;
   }
 
+  // ── Error logs (in-memory) ───────────────────────────────────────────────
+
   async addErrorLog(log: Omit<ErrorLog, "id" | "createdAt">): Promise<ErrorLog> {
-    const entry: ErrorLog = {
-      id: randomUUID(),
-      ...log,
-      createdAt: new Date(),
-    };
+    const entry: ErrorLog = { id: randomUUID(), ...log, createdAt: new Date() };
     this.errorLogs.unshift(entry);
     if (this.errorLogs.length > 500) this.errorLogs.pop();
     return entry;
@@ -688,20 +776,16 @@ export class MemStorage implements IStorage {
     return [...this.errorLogs];
   }
 
-  // === Support ===
+  // ── Support (in-memory) ──────────────────────────────────────────────────
+
   async getOrCreateSupportChat(telegramUserId: string, userId?: string): Promise<SupportChat> {
     const existing = Array.from(this.supportChats.values()).find(
       (c) => c.telegramUserId === telegramUserId
     );
     if (existing) return existing;
     const chat: SupportChat = {
-      id: randomUUID(),
-      userId: userId || null,
-      telegramUserId,
-      lastMessage: null,
-      lastActivity: new Date(),
-      status: "open",
-      createdAt: new Date(),
+      id: randomUUID(), userId: userId || null, telegramUserId,
+      lastMessage: null, lastActivity: new Date(), status: "open", createdAt: new Date(),
     };
     this.supportChats.set(chat.id, chat);
     return chat;
@@ -732,13 +816,8 @@ export class MemStorage implements IStorage {
   }
 
   async addSupportMessage(msg: Omit<SupportMessage, "id" | "createdAt">): Promise<SupportMessage> {
-    const message: SupportMessage = {
-      id: randomUUID(),
-      ...msg,
-      createdAt: new Date(),
-    };
+    const message: SupportMessage = { id: randomUUID(), ...msg, createdAt: new Date() };
     this.supportMessages.set(message.id, message);
-    // Update chat lastMessage and lastActivity
     const chat = this.supportChats.get(msg.chatId);
     if (chat) {
       chat.lastMessage = msg.message;

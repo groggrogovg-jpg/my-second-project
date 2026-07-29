@@ -6,3 +6,4 @@
 - [Trial content protection](trial-watermarking.md) — trial-изображения хранятся как data-URL с вшитым серверным водяным знаком, чтобы оригинальный URL Polza.ai не утекал клиенту; платные генерации остаются без водяных знаков
 - [Editor paid actions](editor-paid-actions.md) — подтверждение показывается до операции, а звёзды списываются сервером только после успешного результата
 - [YooMoney confirmation](yoomoney-confirmation.md) — webhook может не дойти; возврат пользователя дополнительно проверяет историю операций по label и точной сумме
+- [PostgreSQL storage migration](pg-storage-migration.md) — аккаунты и платежи в PostgreSQL; initDb() перед registerRoutes(); rollback credited=TRUE если UPDATE app_users rowCount=0

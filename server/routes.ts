@@ -958,7 +958,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(400).json({ error: "Укажите идентификатор (e.g. 'admin')" });
     }
     const memStorage = storage as MemStorage;
-    const token = memStorage.createAdminResetToken();
+    const token = memStorage.generateAdminResetToken();
     const host = req.headers.host || "localhost:5000";
     const proto = req.headers["x-forwarded-proto"] || "https";
     const resetLink = `${proto}://${host}/admin?token=${token}`;
