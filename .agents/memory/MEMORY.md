@@ -5,3 +5,4 @@
 - [Admin panel user model](admin-panel-user-model.md) — Users tab joins legacy serverUsers with real AppUser accounts; admin actions should credit AppUser directly, not pending credits
 - [Trial content protection](trial-watermarking.md) — trial-изображения хранятся как data-URL с вшитым серверным водяным знаком, чтобы оригинальный URL Polza.ai не утекал клиенту; платные генерации остаются без водяных знаков
 - [Editor paid actions](editor-paid-actions.md) — подтверждение показывается до операции, а звёзды списываются сервером только после успешного результата
+- [YooMoney confirmation](yoomoney-confirmation.md) — webhook может не дойти; возврат пользователя дополнительно проверяет историю операций по label и точной сумме
