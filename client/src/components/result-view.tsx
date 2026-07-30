@@ -40,6 +40,7 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
   const [editorOpen, setEditorOpen] = useState(false);
   const [textEditorOpen, setTextEditorOpen] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [starsBalance, setStarsBalance] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasReady, setCanvasReady] = useState(false);
   const analysis = generation.gptAnalysis as GptAnalysis | null;
@@ -51,6 +52,15 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
 
   const mediaUrl = generation.resultImageUrl;
   const canEdit = (isCard || isTryon) && !!mediaUrl;
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.ok ? r.json() : null)
+      .then((user) => {
+        if (user && typeof user.starsBalance === "number") setStarsBalance(user.starsBalance);
+      })
+      .catch(() => {});
+  }, []);
 
   const copyToClipboard = async (text: string, field: string) => {
     await navigator.clipboard.writeText(text);
@@ -94,6 +104,11 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
       const data = await resp.json();
       if (!resp.ok) {
         throw new Error(data.error || "Ошибка перегенерации");
+      }
+      const me = await fetch("/api/auth/me");
+      if (me.ok) {
+        const user = await me.json();
+        if (typeof user.starsBalance === "number") setStarsBalance(user.starsBalance);
       }
       onRegenerationComplete?.(generation.id);
     } catch (err: any) {
@@ -144,7 +159,7 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
   return (
     <>
       {editorOpen && mediaUrl && (
-        <ImageEditor imageUrl={mediaUrl} onClose={() => setEditorOpen(false)} stars={0} onStarsChange={() => {}} isTrial={isTrial} />
+        <ImageEditor imageUrl={mediaUrl} onClose={() => setEditorOpen(false)} stars={starsBalance} onStarsChange={setStarsBalance} isTrial={isTrial} />
       )}
       {textEditorOpen && analysis && (
         <TextEditor

@@ -326,7 +326,7 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, i
   };
 
   const handleFillBackground = async (color: string) => {
-    const cost = 0.5;
+    const cost = 1;
     if (!confirmStarAction(cost)) return;
     const previous = blobUrl;
     setProcessingLocal(true);

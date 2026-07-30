@@ -1032,7 +1032,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
         const url = `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`;
 
-        await storage.recordPayment({ label, starsToAdd: 0, cardsIncluded: pkg.cardsIncluded, modelType: pkg.modelType, operationId: "", amount: String(amount), username, userId: sessionUserId });
+        const starsIncluded = packageId.endsWith("-10") ? 10 : pkg.cardsIncluded;
+        await storage.recordPayment({ label, starsToAdd: starsIncluded, cardsIncluded: pkg.cardsIncluded, modelType: pkg.modelType, operationId: "", amount: String(amount), username, userId: sessionUserId });
         console.log(`[payment/create] ✓ DONE returning url for package`);
         return res.json({ url, label, cards: pkg.cardsIncluded, model: pkg.modelType });
       }
@@ -1156,7 +1157,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
           await storage.recordPayment({
             label,
-            starsToAdd: 0,
+            starsToAdd: recovered.packageId.endsWith("-10") ? 10 : packageData.cardsIncluded,
             cardsIncluded: packageData.cardsIncluded,
             modelType: packageData.modelType,
             operationId: operation_id || "",
@@ -1398,6 +1399,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!generation) {
         return res.status(404).json({ error: "Генерация не найдена" });
       }
+      const userId = req.session?.userId;
+      if (!userId) return res.status(401).json({ error: "Авторизуйтесь, чтобы редактировать карточку" });
+      if (generation.userId !== userId) {
+        return res.status(403).json({ error: "Нет доступа к этой карточке" });
+      }
+      const currentUser = await storage.getAppUserById(userId);
+      if (!currentUser || currentUser.starsBalance < 1) {
+        return res.status(403).json({ error: "Недостаточно звёзд. Пополните баланс, купив пакет карточек." });
+      }
 
       // Обновляем анализ и статус
       await storage.updateGeneration(generationId, {
@@ -1447,6 +1457,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             status: "done",
             resultImageUrl: finalUrl,
           });
+          const charged = await storage.deductStars(userId, 1);
+          if (!charged) {
+            await storage.updateGeneration(generationId, {
+              status: "error",
+              errorMessage: "Недостаточно звёзд для завершения редактирования",
+            });
+            return;
+          }
           console.log(`[regenerate] ✓ DONE id=${generationId} trial=${generation.usedTrial || false} url=${finalUrl.substring(0, 80)}...`);
         } catch (err: any) {
           const axiosDetail = err?.response?.data ? ` [${JSON.stringify(err.response.data)}]` : "";
@@ -1584,8 +1602,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const isTrialEdit = !user || (user.nano2Balance === 0 && user.proBalance === 0 && (user.trialNano2Used || user.trialProUsed || user.trialTryonUsed));
       const finalUrl = await processResultImage(resultUrl, isTrialEdit);
-      await storage.updateStarsBalance(userId, -cost);
-      const updatedUser = await storage.getAppUserById(userId);
+       const updatedUser = await storage.deductStars(userId, cost);
+       if (!updatedUser) {
+         return res.status(409).json({ error: "Не удалось списать звезду. Попробуйте ещё раз." });
+       }
       console.log(`[edit-background] ✓ DONE trial=${isTrialEdit} url=${finalUrl.substring(0, 80)}...`);
       res.json({ url: finalUrl, status: "done", starsBalance: updatedUser?.starsBalance ?? 0 });
     } catch (err: any) {
@@ -1611,8 +1631,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (user.starsBalance < cost) {
         return res.status(403).json({ error: `Недостаточно звёзд. Нужно ${cost} ⭐. Пополните баланс.` });
       }
-      await storage.updateStarsBalance(userId, -cost);
-      const updated = await storage.getAppUserById(userId);
+       const updated = await storage.deductStars(userId, cost);
+       if (!updated) {
+         return res.status(409).json({ error: "Не удалось списать звёзды. Попробуйте ещё раз." });
+       }
       console.log(`[editor] ✓ deducted action=${actionType} cost=${cost} userId=${userId}`);
       return res.json({ starsBalance: updated?.starsBalance ?? 0 });
     } catch (err: any) {

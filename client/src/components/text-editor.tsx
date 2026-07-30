@@ -46,8 +46,8 @@ export default function TextEditor({ analysis, onClose, onRegenerate, isRegenera
           </button>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          Измените текст, затем нажмите «Перегенерировать» — карточка будет создана заново с новым текстом
+         <p className="text-xs text-muted-foreground">
+           Измените текст, затем нажмите «Перегенерировать» — карточка будет создана заново с новым текстом. Стоимость: 1 ⭐
         </p>
 
         <div className="space-y-1.5">

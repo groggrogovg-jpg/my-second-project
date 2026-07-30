@@ -187,7 +187,7 @@ function PackagesGrid({
   packages,
 }: {
   model: "nano2" | "pro";
-  packages: readonly { id: string; cards: number; price: number; perCard: number; saving: number; popular: boolean }[];
+  packages: readonly { id: string; cards: number; starsIncluded: number; price: number; perCard: number; saving: number; popular: boolean }[];
 }) {
   const { toast } = useToast();
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -279,6 +279,10 @@ function PackagesGrid({
               <li className="flex items-center gap-2 text-xs">
                 <Check className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
                 <span>{model === "pro" ? "2K качество" : "1K качество"}</span>
+              </li>
+              <li className="flex items-center gap-2 text-xs">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                <span>{pkg.starsIncluded} ⭐ на инструменты редактора</span>
               </li>
               <li className="flex items-center gap-2 text-xs">
                 <Check className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />

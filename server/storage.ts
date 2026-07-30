@@ -105,6 +105,7 @@ export interface IStorage {
   getAppUserByUsername(username: string): Promise<AppUser | undefined>;
   updateAppUserBalances(id: string, nano2: number, pro: number): Promise<void>;
   updateStarsBalance(id: string, delta: number): Promise<void>;
+  deductStars(id: string, amount: number): Promise<AppUser | null>;
   resetUserPassword(username: string, passwordHash: string): Promise<boolean>;
   markTrialUsed(id: string, feature: TrialFeature): Promise<void>;
   consumeEntitlement(id: string, feature: TrialFeature): Promise<{ usedTrial: boolean } | null>;
@@ -352,6 +353,18 @@ export class MemStorage implements IStorage {
     );
   }
 
+  async deductStars(id: string, amount: number): Promise<AppUser | null> {
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    const result = await pool.query(
+      `UPDATE app_users
+       SET stars_balance = stars_balance - $1
+       WHERE id = $2 AND stars_balance >= $1
+       RETURNING *`,
+      [amount, id]
+    );
+    return result.rows[0] ? rowToAppUser(result.rows[0]) : null;
+  }
+
   async consumeEntitlement(id: string, feature: TrialFeature): Promise<{ usedTrial: boolean } | null> {
     const user = await this.getAppUserById(id);
     if (!user) return null;
@@ -549,9 +562,9 @@ export class MemStorage implements IStorage {
           `UPDATE app_users SET
              pro_cards = (CASE WHEN pro_expires_at > NOW() THEN pro_cards ELSE 0 END) + $1,
              pro_expires_at = $2,
-             stars_balance = stars_balance + $1
-           WHERE id=$3`,
-          [payment.cardsIncluded, expiresAt, resolvedId]
+             stars_balance = stars_balance + $3
+           WHERE id=$4`,
+          [payment.cardsIncluded, expiresAt, payment.starsToAdd, resolvedId]
         );
         if ((r.rowCount ?? 0) === 0) {
           // Roll back the credited flag — balance was not applied
@@ -563,9 +576,9 @@ export class MemStorage implements IStorage {
           `UPDATE app_users SET
              nano2_cards = (CASE WHEN nano2_expires_at > NOW() THEN nano2_cards ELSE 0 END) + $1,
              nano2_expires_at = $2,
-             stars_balance = stars_balance + $1
-           WHERE id=$3`,
-          [payment.cardsIncluded, expiresAt, resolvedId]
+             stars_balance = stars_balance + $3
+           WHERE id=$4`,
+          [payment.cardsIncluded, expiresAt, payment.starsToAdd, resolvedId]
         );
         if ((r.rowCount ?? 0) === 0) {
           await pool.query("UPDATE payments SET credited=FALSE WHERE label=$1", [label]);
