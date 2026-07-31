@@ -263,6 +263,18 @@ function PackagesGrid({
               </p>
             </div>
 
+            <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900/50 dark:bg-amber-950/30">
+              <Sparkles className="w-4 h-4 flex-shrink-0 text-amber-500" />
+              <div className="min-w-0">
+                <p className="text-sm font-bold leading-tight text-amber-700 dark:text-amber-300">
+                  +{pkg.starsIncluded} ⭐ на баланс
+                </p>
+                <p className="text-[11px] leading-tight text-amber-700/70 dark:text-amber-300/70">
+                  для инструментов редактора
+                </p>
+              </div>
+            </div>
+
             <Separator />
 
             <ul className="space-y-1.5">
@@ -279,10 +291,6 @@ function PackagesGrid({
               <li className="flex items-center gap-2 text-xs">
                 <Check className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
                 <span>{model === "pro" ? "2K качество" : "1K качество"}</span>
-              </li>
-              <li className="flex items-center gap-2 text-xs">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                <span>{pkg.starsIncluded} ⭐ на инструменты редактора</span>
               </li>
               <li className="flex items-center gap-2 text-xs">
                 <Check className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
