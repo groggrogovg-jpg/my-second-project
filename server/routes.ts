@@ -19,6 +19,7 @@ async function processResultImage(remoteUrl: string, isTrial: boolean): Promise<
 }
 import OpenAI from "openai";
 import axios from "axios";
+import sharp from "sharp";
 import path from "path";
 import crypto from "crypto";
 import { URL } from "url";
@@ -28,6 +29,36 @@ import { sendPasswordResetEmail } from "./email";
 const YM_NOTIFY_SECRET = process.env.YOOMONEY_NOTIFICATION_SECRET || "";
 const YM_ACCESS_TOKEN = process.env.YOOMONEY_ACCESS_TOKEN || "";
 const DEV_PROMO_CODE = process.env.DEV_PROMO_CODE || "DEV100";
+
+/**
+ * Подготавливает пользовательское фото для AI API.
+ * Камеры часто присылают JPEG 4–8 МБ и 4K+ разрешение; такой payload
+ * может быть отклонён Polza на этапе генерации даже при валидном ключе.
+ */
+async function prepareImageForAi(buffer: Buffer, mimeType: string): Promise<{ buffer: Buffer; mimeType: string }> {
+  try {
+    const image = sharp(buffer, { failOn: "none" });
+    const metadata = await image.metadata();
+    const needsResize = Math.max(metadata.width || 0, metadata.height || 0) > 2048;
+    const needsReencode = !["image/jpeg", "image/png", "image/webp"].includes(mimeType);
+
+    if (!needsResize && !needsReencode && buffer.length <= 3 * 1024 * 1024) {
+      return { buffer, mimeType };
+    }
+
+    const output = await image
+      .rotate()
+      .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 85, mozjpeg: true })
+      .toBuffer();
+
+    console.log(`[image] normalized ${buffer.length}b → ${output.length}b`);
+    return { buffer: output, mimeType: "image/jpeg" };
+  } catch (error: any) {
+    console.warn(`[image] normalization skipped: ${error.message}`);
+    return { buffer, mimeType };
+  }
+}
 
 function adminOnly(req: Request, res: Response, next: Function) {
   const devCode = (req.headers["x-dev-code"] as string) || "";
@@ -549,8 +580,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/suggest-notes", upload.single("image"), async (req: Request, res: Response) => {
     try {
       if (!req.file) return res.status(400).json({ error: "И\u0437\u043e\u0431\u0440\u0430\u0436\u0435\u043d\u0438\u0435 \u043d\u0435 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d\u043e" });
-      const imageBase64 = req.file.buffer.toString("base64");
-      const notes = await suggestNotes(imageBase64, req.file.mimetype);
+      const prepared = await prepareImageForAi(req.file.buffer, req.file.mimetype);
+      const imageBase64 = prepared.buffer.toString("base64");
+      const notes = await suggestNotes(imageBase64, prepared.mimeType);
       res.json({ notes });
     } catch (err: any) {
       console.error("[suggest-notes] О\u0448\u0438\u0431\u043a\u0430:", err.message);
@@ -569,11 +601,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ error: "Изображение не загружено" });
       }
 
-      const imageBuffer = req.file.buffer;
-      const mimeType = req.file.mimetype;
+      const originalImageBuffer = req.file.buffer;
+      const originalMimeType = req.file.mimetype;
+      const preparedImage = await prepareImageForAi(originalImageBuffer, originalMimeType);
+      const imageBuffer = preparedImage.buffer;
+      const mimeType = preparedImage.mimeType;
       const filename = req.file.originalname || "product.jpg";
       const imageBase64 = imageBuffer.toString("base64");
-      const imageDataUrl = `data:${mimeType};base64,${imageBase64}`;
+      const imageDataUrl = `data:${originalMimeType};base64,${originalImageBuffer.toString("base64")}`;
 
       const model = (req.body?.model as string) || "nano-banana-pro";
       const aspectRatio = (req.body?.aspectRatio as string) || "1:1";

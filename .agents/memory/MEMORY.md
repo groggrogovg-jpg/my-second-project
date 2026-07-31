@@ -7,3 +7,4 @@
 - [Editor paid actions](editor-paid-actions.md) — подтверждение показывается до операции, а звёзды списываются сервером только после успешного результата
 - [YooMoney confirmation](yoomoney-confirmation.md) — webhook может не дойти; возврат пользователя дополнительно проверяет историю операций по label и точной сумме
 - [PostgreSQL storage migration](pg-storage-migration.md) — аккаунты и платежи в PostgreSQL; initDb() перед registerRoutes(); rollback credited=TRUE если UPDATE app_users rowCount=0
+- [Polza image payloads](polza-image-payloads.md) — большие фото с камер нужно нормализовать перед отправкой в Polza; валидный ключ иначе выглядит как ошибка генерации
