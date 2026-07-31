@@ -25,6 +25,7 @@ import crypto from "crypto";
 import { URL } from "url";
 import bcrypt from "bcrypt";
 import { sendPasswordResetEmail } from "./email";
+import { STAR_PACKAGES } from "@shared/schema";
 
 const YM_NOTIFY_SECRET = process.env.YOOMONEY_NOTIFICATION_SECRET || "";
 const YM_ACCESS_TOKEN = process.env.YOOMONEY_ACCESS_TOKEN || "";
@@ -132,12 +133,22 @@ const PACKAGE_DATA: Record<string, { price: number; cardsIncluded: number; model
   "pro-100":   { price: 5490, cardsIncluded: 100, modelType: "pro",   name: "Nano Banana Pro — 100 карточек" },
 };
 
+const STAR_PACKAGE_DATA = Object.fromEntries(
+  STAR_PACKAGES.map((pkg) => [pkg.id, pkg]),
+) as Record<string, { id: string; stars: number; price: number; description: string }>;
+
 // Payment records currently live in process memory. Keep the package and owner
 // in the signed payment label so a webhook can reconstruct a pending payment
 // after a process restart (the webhook signature is still the source of trust).
 function parsePackagePaymentLabel(label: string): { packageId: string; userId: string } | null {
   const match = label.match(/^pkg-(nano2-5|nano2-10|nano2-50|nano2-100|pro-5|pro-10|pro-50|pro-100)-(.+)-\d+$/);
   if (!match || !PACKAGE_DATA[match[1]]) return null;
+  return { packageId: match[1], userId: match[2] };
+}
+
+function parseStarPaymentLabel(label: string): { packageId: string; userId: string } | null {
+  const match = label.match(/^stars-(stars_10|stars_50|stars_100|stars_250)-(.+)-\d+$/);
+  if (!match || !STAR_PACKAGE_DATA[match[1]]) return null;
   return { packageId: match[1], userId: match[2] };
 }
 
@@ -1025,6 +1036,47 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { planId, planType, packageId } = req.body as { planId?: string; planType?: string; packageId?: string };
 
+      // Standalone stars purchase flow.
+      if (packageId && STAR_PACKAGE_DATA[packageId]) {
+        const sessionUserId = req.session?.userId;
+        if (!sessionUserId) {
+          return res.status(401).json({ error: "Войдите в аккаунт перед оплатой" });
+        }
+        const sessionUser = await storage.getAppUserById(sessionUserId);
+        if (!sessionUser) {
+          return res.status(401).json({ error: "Пользователь не найден. Войдите снова." });
+        }
+        const starPackage = STAR_PACKAGE_DATA[packageId];
+        const amount = getTestPrice(starPackage.price);
+        const label = `stars-${packageId}-${sessionUserId}-${Date.now()}`;
+        const wallet = process.env.VITE_YOOMONEY_WALLET || "";
+        const host = req.get("host") || "localhost:5000";
+        const proto = req.headers["x-forwarded-proto"] || req.protocol;
+        const successURL = `${proto}://${host}/payment-success?label=${encodeURIComponent(label)}`;
+        const params = new URLSearchParams({
+          receiver: wallet,
+          "quickpay-form": "button",
+          sum: String(amount),
+          label,
+          comment: `КардоМатик: ${starPackage.description}`,
+          successURL,
+        });
+        const url = `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`;
+
+        await storage.recordPayment({
+          label,
+          starsToAdd: starPackage.stars,
+          cardsIncluded: 0,
+          modelType: "",
+          operationId: "",
+          amount: String(amount),
+          username: sessionUser.username,
+          userId: sessionUserId,
+        });
+        console.log(`[payment/create] ✓ stars package=${packageId} stars=${starPackage.stars} amount=${amount}`);
+        return res.json({ url, label, stars: starPackage.stars });
+      }
+
       // New package-based flow
       if (packageId) {
         const sessionUserId = req.session?.userId;
@@ -1183,6 +1235,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!confirmed) {
         const recovered = parsePackagePaymentLabel(label);
         const packageData = recovered ? PACKAGE_DATA[recovered.packageId] : undefined;
+        const recoveredStars = parseStarPaymentLabel(label);
+        const starData = recoveredStars ? STAR_PACKAGE_DATA[recoveredStars.packageId] : undefined;
         if (recovered && packageData) {
           const paidAmount = Number(amount);
            const expectedAmount = getTestPrice(packageData.price);
@@ -1202,6 +1256,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           });
           confirmed = await storage.confirmPayment(label);
           console.log(`[payment/webhook] ✓ recovered payment record label=${label}`);
+        } else if (recoveredStars && starData) {
+          const paidAmount = Number(amount);
+          const expectedAmount = getTestPrice(starData.price);
+          if (Number.isFinite(paidAmount) && (paidAmount <= 0 || paidAmount > expectedAmount + 0.01 || paidAmount < expectedAmount * 0.9)) {
+            console.warn(`[payment/webhook] ✗ stars amount mismatch label=${label} expected=${expectedAmount} got=${amount}`);
+            return res.status(400).send("amount mismatch");
+          }
+          await storage.recordPayment({
+            label,
+            starsToAdd: starData.stars,
+            cardsIncluded: 0,
+            modelType: "",
+            operationId: operation_id || "",
+            amount: String(amount || starData.price),
+            username: "",
+            userId: recoveredStars.userId,
+          });
+          confirmed = await storage.confirmPayment(label);
+          console.log(`[payment/webhook] ✓ recovered stars record label=${label}`);
         }
       }
       if (confirmed) {
@@ -1250,18 +1323,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!payment) {
       const recovered = parsePackagePaymentLabel(label);
       const packageData = recovered ? PACKAGE_DATA[recovered.packageId] : undefined;
+      const recoveredStars = parseStarPaymentLabel(label);
+      const starData = recoveredStars ? STAR_PACKAGE_DATA[recoveredStars.packageId] : undefined;
       if (recovered && packageData) {
         const operation = await verifyYooMoneyPayment(label, String(getTestPrice(packageData.price)));
         if (operation) {
           await storage.recordPayment({
             label,
-            starsToAdd: 0,
+            starsToAdd: recovered.packageId.endsWith("-10") ? 10 : packageData.cardsIncluded,
             cardsIncluded: packageData.cardsIncluded,
             modelType: packageData.modelType,
             operationId: operation.operationId,
             amount: operation.amount,
             username: "",
             userId: recovered.userId,
+          });
+          payment = await storage.confirmPayment(label);
+        }
+      } else if (recoveredStars && starData) {
+        const operation = await verifyYooMoneyPayment(label, String(getTestPrice(starData.price)));
+        if (operation) {
+          await storage.recordPayment({
+            label,
+            starsToAdd: starData.stars,
+            cardsIncluded: 0,
+            modelType: "",
+            operationId: operation.operationId,
+            amount: operation.amount,
+            username: "",
+            userId: recoveredStars.userId,
           });
           payment = await storage.confirmPayment(label);
         }
@@ -1293,6 +1383,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const latestPayment = await storage.getPaymentByLabel(label);
     const latestUser = creditedUser || (userId ? await storage.getAppUserById(userId) : undefined);
+    const starPackage = parseStarPaymentLabel(label);
+    const starPackageName = starPackage
+      ? STAR_PACKAGE_DATA[starPackage.packageId]?.description
+      : undefined;
     const credited = Boolean(latestPayment?.credited);
     console.log(`[payment/verify] ✓ label=${label} confirmed cards=${payment.cardsIncluded} model=${payment.modelType} stars=${payment.starsToAdd} credited=${credited}`);
     return res.json({
@@ -1301,6 +1395,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       cards: payment.cardsIncluded,
       model: payment.modelType,
       stars: payment.starsToAdd,
+      starsPackageName: starPackageName || null,
       credited,
       balance: latestUser
         ? {

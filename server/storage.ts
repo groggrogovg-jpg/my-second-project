@@ -52,6 +52,7 @@ export interface PaymentRecord {
   confirmed: boolean;
   username: string;
   userId: string | null;
+  email: string | null;
   credited: boolean;
   createdAt: Date;
 }
@@ -119,7 +120,7 @@ export interface IStorage {
   listGenerations(filter: { userId?: string; sessionId?: string }): Promise<Generation[]>;
   transferSessionGenerations(sessionId: string, userId: string): Promise<number>;
   deleteExpiredGenerations(): Promise<number>;
-  recordPayment(payment: Omit<PaymentRecord, "confirmed" | "credited" | "createdAt">): Promise<PaymentRecord>;
+  recordPayment(payment: Omit<PaymentRecord, "confirmed" | "credited" | "createdAt" | "email">): Promise<PaymentRecord>;
   updatePaymentOperationId(label: string, operationId: string): Promise<PaymentRecord | undefined>;
   getPaymentByLabel(label: string): Promise<PaymentRecord | undefined>;
   confirmPayment(label: string): Promise<PaymentRecord | undefined>;
@@ -192,6 +193,7 @@ function rowToPayment(row: Record<string, any>): PaymentRecord {
     credited: Boolean(row.credited),
     username: row.username ?? "",
     userId: row.user_id ?? null,
+    email: row.user_email ?? row.email ?? row.username ?? null,
     createdAt: row.created_at ? new Date(row.created_at) : new Date(),
   };
 }
@@ -481,7 +483,7 @@ export class MemStorage implements IStorage {
 
   // ── Payments (PostgreSQL) ───────────────────────────────────────────────
 
-  async recordPayment(payment: Omit<PaymentRecord, "confirmed" | "credited" | "createdAt">): Promise<PaymentRecord> {
+  async recordPayment(payment: Omit<PaymentRecord, "confirmed" | "credited" | "createdAt" | "email">): Promise<PaymentRecord> {
     const now = new Date();
     await pool.query(
       `INSERT INTO payments
@@ -495,7 +497,7 @@ export class MemStorage implements IStorage {
         payment.username, payment.userId ?? null, now,
       ]
     );
-    return { ...payment, confirmed: false, credited: false, createdAt: now };
+    return { ...payment, email: payment.username || null, confirmed: false, credited: false, createdAt: now };
   }
 
   async updatePaymentOperationId(label: string, operationId: string): Promise<PaymentRecord | undefined> {
@@ -523,7 +525,12 @@ export class MemStorage implements IStorage {
   }
 
   async listPayments(): Promise<PaymentRecord[]> {
-    const res = await pool.query("SELECT * FROM payments ORDER BY created_at DESC");
+    const res = await pool.query(
+      `SELECT p.*, COALESCE(u.email, p.username) AS user_email
+       FROM payments p
+       LEFT JOIN app_users u ON u.id = p.user_id
+       ORDER BY p.created_at DESC`,
+    );
     return res.rows.map(rowToPayment);
   }
 
@@ -544,55 +551,62 @@ export class MemStorage implements IStorage {
       }
     }
 
-    // Atomically lock the payment row: mark credited=TRUE only once.
-    const payRes = await pool.query(
-      `UPDATE payments SET credited=TRUE, user_id=$1
-       WHERE label=$2 AND confirmed=TRUE AND credited=FALSE
-       RETURNING *`,
-      [resolvedId, label]
-    );
-    if (!payRes.rows[0]) return null; // already credited, not confirmed, or not found
+    // Lock and credit in one transaction so a process interruption cannot mark
+    // a payment as credited without applying its balance.
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const payRes = await client.query(
+        `UPDATE payments SET credited=TRUE, user_id=$1
+         WHERE label=$2 AND confirmed=TRUE AND credited=FALSE
+         RETURNING *`,
+        [resolvedId, label],
+      );
+      if (!payRes.rows[0]) {
+        await client.query("ROLLBACK");
+        return null; // already credited, not confirmed, or not found
+      }
 
-    const payment = rowToPayment(payRes.rows[0]);
-    const expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
-
-    if (payment.cardsIncluded > 0 && payment.modelType) {
-      if (payment.modelType === "pro") {
-        const r = await pool.query(
+      const payment = rowToPayment(payRes.rows[0]);
+      const expiresAt = new Date(Date.now() + PACKAGE_DURATION_MS);
+      let balanceRes;
+      if (payment.cardsIncluded > 0 && payment.modelType === "pro") {
+        balanceRes = await client.query(
           `UPDATE app_users SET
              pro_cards = (CASE WHEN pro_expires_at > NOW() THEN pro_cards ELSE 0 END) + $1,
              pro_expires_at = $2,
              stars_balance = stars_balance + $3
            WHERE id=$4`,
-          [payment.cardsIncluded, expiresAt, payment.starsToAdd, resolvedId]
+          [payment.cardsIncluded, expiresAt, payment.starsToAdd, resolvedId],
         );
-        if ((r.rowCount ?? 0) === 0) {
-          // Roll back the credited flag — balance was not applied
-          await pool.query("UPDATE payments SET credited=FALSE WHERE label=$1", [label]);
-          return null;
-        }
-      } else {
-        const r = await pool.query(
+      } else if (payment.cardsIncluded > 0) {
+        balanceRes = await client.query(
           `UPDATE app_users SET
              nano2_cards = (CASE WHEN nano2_expires_at > NOW() THEN nano2_cards ELSE 0 END) + $1,
              nano2_expires_at = $2,
              stars_balance = stars_balance + $3
            WHERE id=$4`,
-          [payment.cardsIncluded, expiresAt, payment.starsToAdd, resolvedId]
+          [payment.cardsIncluded, expiresAt, payment.starsToAdd, resolvedId],
         );
-        if ((r.rowCount ?? 0) === 0) {
-          await pool.query("UPDATE payments SET credited=FALSE WHERE label=$1", [label]);
-          return null;
-        }
+      } else {
+        balanceRes = await client.query(
+          "UPDATE app_users SET stars_balance = stars_balance + $1 WHERE id=$2",
+          [payment.starsToAdd, resolvedId],
+        );
       }
-    } else if (payment.starsToAdd > 0) {
-      await pool.query(
-        "UPDATE app_users SET stars_balance = stars_balance + $1 WHERE id=$2",
-        [payment.starsToAdd, resolvedId]
-      );
-    }
 
-    return await this.getAppUserById(resolvedId) ?? null;
+      if ((balanceRes.rowCount ?? 0) === 0) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      await client.query("COMMIT");
+      return await this.getAppUserById(resolvedId) ?? null;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   // ── Legacy User (in-memory — used by older code paths) ──────────────────

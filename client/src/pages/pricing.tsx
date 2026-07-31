@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Sparkles, Check, ArrowLeft, Zap, Crown, Package, Loader2 } from "lucide-react";
-import { NANO2_PACKAGES, PRO_PACKAGES } from "@shared/schema";
+import { NANO2_PACKAGES, PRO_PACKAGES, STAR_PACKAGES } from "@shared/schema";
 import { Header } from "@/components/header";
 import { useToast } from "@/hooks/use-toast";
 
@@ -15,10 +15,30 @@ type ModelTab = "nano2" | "pro";
 
 export default function Pricing() {
   const [tab, setTab] = useState<ModelTab>("pro");
+  const [isAuth, setIsAuth] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => setIsAuth(res.ok))
+      .catch(() => setIsAuth(false));
+  }, []);
+
+  const openLogin = () => {
+    window.location.href = "/app?auth=login";
+  };
 
   return (
     <div className="min-h-screen bg-background">
-      <Header showBack backHref="/" />
+      <Header
+        showBack
+        backHref="/"
+        isAuth={isAuth}
+        onLogin={openLogin}
+        desktopRight={!isAuth ? (
+          <Button size="sm" variant="outline" onClick={openLogin}>Войти</Button>
+        ) : undefined}
+      />
       <main className="max-w-5xl mx-auto px-3 sm:px-6 py-8 sm:py-12">
         <div className="text-center mb-6 sm:mb-10">
           <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-3 py-1.5 rounded-full text-xs font-medium mb-3 sm:mb-4">
@@ -70,6 +90,12 @@ export default function Pricing() {
 
         {tab === "nano2" && <PackagesGrid model="nano2" packages={NANO2_PACKAGES} />}
         {tab === "pro" && <PackagesGrid model="pro" packages={PRO_PACKAGES} />}
+
+        <StarsPackagesGrid
+          isAuth={isAuth}
+          onLogin={openLogin}
+          toast={toast}
+        />
 
         <div className="mt-10 rounded-2xl border border-border bg-muted/30 p-6 sm:p-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
@@ -179,6 +205,81 @@ export default function Pricing() {
         </div>
       </main>
     </div>
+  );
+}
+
+function StarsPackagesGrid({
+  isAuth,
+  onLogin,
+  toast,
+}: {
+  isAuth: boolean;
+  onLogin: () => void;
+  toast: ReturnType<typeof useToast>["toast"];
+}) {
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  const handlePay = async (packageId: string) => {
+    if (!isAuth) {
+      onLogin();
+      return;
+    }
+    setLoadingId(packageId);
+    try {
+      const res = await fetch("/api/payment/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packageId }),
+      });
+      const data = await res.json();
+      if (res.status === 401) {
+        onLogin();
+        return;
+      }
+      if (!res.ok || !data.url) throw new Error(data.error || "Ошибка при создании платежа");
+      window.location.href = data.url;
+    } catch (error: any) {
+      toast({
+        title: "Ошибка оплаты",
+        description: error.message || "Не удалось создать платёж. Попробуйте позже.",
+        variant: "destructive",
+      });
+      setLoadingId(null);
+    }
+  };
+
+  return (
+    <section className="mt-10 rounded-2xl border border-amber-200 bg-amber-50/50 p-5 sm:p-8 dark:border-amber-900/50 dark:bg-amber-950/20">
+      <div className="mb-5 text-center">
+        <div className="inline-flex items-center gap-2 text-amber-700 dark:text-amber-300">
+          <Sparkles className="h-5 w-5" />
+          <h2 className="text-xl sm:text-2xl font-bold">Пополнить звёзды</h2>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Звёзды используются для удаления фона, ретуши и других инструментов редактора.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {STAR_PACKAGES.map((pkg) => (
+          <Card key={pkg.id} className="border-amber-200 bg-background dark:border-amber-900/50">
+            <div className="space-y-3 p-4 text-center">
+              <div className="text-2xl font-bold text-amber-600">+{pkg.stars} ⭐</div>
+              <p className="text-sm font-semibold text-foreground">{pkg.price.toLocaleString("ru")} ₽</p>
+              <p className="min-h-8 text-xs text-muted-foreground">{pkg.description}</p>
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => handlePay(pkg.id)}
+                disabled={loadingId !== null}
+                data-testid={`buy-stars-${pkg.id}`}
+              >
+                {loadingId === pkg.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Купить"}
+              </Button>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </section>
   );
 }
 

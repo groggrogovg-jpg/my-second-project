@@ -19,11 +19,13 @@ function getBalance(key: string): number {
 export default function PaymentSuccess() {
   const [cardsAdded, setCardsAdded] = useState(0);
   const [starsAdded, setStarsAdded] = useState(0);
+  const [starsPackageName, setStarsPackageName] = useState("");
   const [model, setModel] = useState<"nano2" | "pro" | null>(null);
   const [alreadyCredited, setAlreadyCredited] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyFailed, setVerifyFailed] = useState(false);
   const [currentBalance, setCurrentBalance] = useState(0);
+  const [currentStarsBalance, setCurrentStarsBalance] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attemptsRef = useRef(0);
 
@@ -48,7 +50,16 @@ export default function PaymentSuccess() {
         setCurrentBalance(getBalance(storedModel === "pro" ? PRO_KEY : NANO2_KEY));
       } else if (storedStars > 0) {
         setStarsAdded(storedStars);
+        setStarsPackageName(localStorage.getItem(`kardo_credited_stars_name_${label}`) || "");
       }
+      fetch("/api/auth/me")
+        .then((res) => res.ok ? res.json() : null)
+        .then((user) => {
+          if (user && typeof user.starsBalance === "number") {
+            setCurrentStarsBalance(user.starsBalance);
+          }
+        })
+        .catch(() => {});
       return;
     }
 
@@ -80,13 +91,18 @@ export default function PaymentSuccess() {
       } catch { /* игнорируем если не авторизован */ }
     };
 
-    const creditStars = (amount: number) => {
+    const creditStars = (amount: number, serverBalance?: number, packageName?: string) => {
       const current = getBalance(STARS_KEY);
       localStorage.setItem(STARS_KEY, String(current + amount));
       localStorage.setItem(creditedKey, "1");
       localStorage.setItem(`kardo_credited_stars_${label}`, String(amount));
+      if (packageName) {
+        localStorage.setItem(`kardo_credited_stars_name_${label}`, packageName);
+      }
       localStorage.removeItem("kardo_pending_payment");
       setStarsAdded(amount);
+      setStarsPackageName(packageName || "");
+      setCurrentStarsBalance(typeof serverBalance === "number" ? serverBalance : current + amount);
     };
 
     const cardsFromUrl = Number(params.get("cards") || "0");
@@ -107,7 +123,7 @@ export default function PaymentSuccess() {
           if (data.cards > 0 && data.model) {
             await creditCards(data.cards, data.model as "nano2" | "pro");
           } else if (data.stars > 0) {
-            creditStars(data.stars);
+            creditStars(data.stars, data.balance?.stars, data.starsPackageName || "");
           } else {
             setVerifyFailed(true);
           }
@@ -166,7 +182,7 @@ export default function PaymentSuccess() {
 
         <div className="space-y-2">
           <h1 className="text-2xl font-bold text-foreground">
-            {verifying
+          {verifying
               ? "Проверяем платёж..."
               : verifyFailed
               ? "Платёж на проверке"
@@ -175,11 +191,15 @@ export default function PaymentSuccess() {
           {verifying ? (
             <p className="text-muted-foreground">Ожидаем подтверждения от ЮMoney...</p>
           ) : alreadyCredited ? (
-            <p className="text-muted-foreground">Карточки уже были зачислены ранее.</p>
+            <p className="text-muted-foreground">
+              {starsAdded > 0 ? "Звёзды уже были зачислены ранее." : "Карточки уже были зачислены ранее."}
+            </p>
           ) : verifyFailed ? (
             <p className="text-muted-foreground">
-              Платёж получен, карточки будут зачислены автоматически. Вернитесь через минуту — они появятся на балансе.
+              Платёж получен, начисление будет выполнено автоматически. Вернитесь через минуту — покупка появится на балансе.
             </p>
+          ) : starsAdded > 0 ? (
+            <p className="text-muted-foreground">Спасибо за покупку. Звёзды добавлены на ваш баланс.</p>
           ) : (
             <p className="text-muted-foreground">Спасибо за покупку. Карточки добавлены на ваш баланс.</p>
           )}
@@ -211,9 +231,14 @@ export default function PaymentSuccess() {
               <span className="text-3xl font-bold text-amber-600">+{starsAdded}</span>
               <span className="text-lg text-amber-600 font-medium">⭐ звёзд</span>
             </div>
+            {starsPackageName && (
+              <p className="text-xs font-medium text-muted-foreground">{starsPackageName}</p>
+            )}
             <p className="text-sm text-muted-foreground">
               Баланс:{" "}
-              <span className="font-semibold text-foreground">{getBalance(STARS_KEY)} ⭐</span>
+              <span className="font-semibold text-foreground">
+                {currentStarsBalance ?? getBalance(STARS_KEY)} ⭐
+              </span>
             </p>
           </div>
         )}

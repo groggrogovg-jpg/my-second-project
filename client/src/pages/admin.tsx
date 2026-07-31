@@ -60,6 +60,7 @@ interface ServerUser {
 interface PaymentRecord {
   label: string;
   username: string;
+  email: string | null;
   amount: string;
   cardsIncluded: number;
   modelType: string;
@@ -605,6 +606,7 @@ function PaymentsTab() {
               <thead>
                 <tr className="border-b border-border bg-muted/50">
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Метка</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Пользователь (email)</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground hidden sm:table-cell">Дата</th>
                   <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Сумма</th>
                   <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Пакет</th>
@@ -615,6 +617,9 @@ function PaymentsTab() {
                 {paged.map((p, i) => (
                   <tr key={p.label} className={`border-b border-border last:border-0 ${i % 2 === 0 ? "" : "bg-muted/20"}`}>
                     <td className="px-4 py-2.5 text-muted-foreground font-mono max-w-[160px] truncate">{p.label}</td>
+                    <td className="px-4 py-2.5 text-foreground max-w-[220px] truncate" title={p.email || p.username || "—"}>
+                      {p.email || p.username || "—"}
+                    </td>
                     <td className="px-4 py-2.5 text-muted-foreground hidden sm:table-cell">{fmt(p.createdAt)}</td>
                     <td className="px-4 py-2.5 text-right font-medium text-foreground">{p.amount} ₽</td>
                     <td className="px-4 py-2.5 text-center text-muted-foreground">

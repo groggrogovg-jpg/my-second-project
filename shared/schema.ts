@@ -190,6 +190,13 @@ export const PRO_PACKAGES = [
   { id: "pro-100", cards: 100, starsIncluded: 100, price: 5490, perCard: 54.9, saving: 8, popular: false },
 ] as const;
 
+export const STAR_PACKAGES = [
+  { id: "stars_10", stars: 10, price: 100, description: "10 звёзд для инструментов редактора" },
+  { id: "stars_50", stars: 50, price: 400, description: "50 звёзд для инструментов редактора" },
+  { id: "stars_100", stars: 100, price: 700, description: "100 звёзд для инструментов редактора" },
+  { id: "stars_250", stars: 250, price: 1500, description: "250 звёзд для инструментов редактора" },
+] as const;
+
 export const MARKETPLACE_FORMATS = [
   { id: "portrait-standard", name: "Стандартный портрет", ratio: "3:4", width: 900, height: 1200, maxMb: 10, hint: "" },
   {

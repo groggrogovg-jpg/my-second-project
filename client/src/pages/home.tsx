@@ -125,6 +125,15 @@ export default function Home() {
       .finally(() => setSessionChecked(true));
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("auth") === "login") {
+      setAuthMode("login");
+      setAuthModalOpen(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   const closeAuthModal = () => {
     setAuthModalOpen(false);
     setAuthError("");
