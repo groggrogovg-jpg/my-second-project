@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, ExternalLink, MessageCircle, Send, X } from "lucide-react";
 import { FAQ_ENTRIES, type FaqEntry } from "@/data/faq";
+import { loadFaqEntries } from "@/services/faq-parser";
 
 const SUPPORT_URL = "https://t.me/KardoMatik_bot";
 const STORAGE_KEY = "kardomatik-faq-chat";
@@ -41,13 +42,13 @@ function stem(word: string): string {
     .replace(/(.)\1+$/u, "$1");
 }
 
-function findFaqAnswer(question: string): FaqEntry | null {
+function findFaqAnswer(question: string, entries: FaqEntry[]): FaqEntry | null {
   const normalizedQuestion = normalizeText(question);
   const questionTokens = new Set(tokenize(question).map(stem));
   if (questionTokens.size === 0) return null;
 
   let best: { entry: FaqEntry; score: number; index: number } | null = null;
-  for (const [index, entry] of FAQ_ENTRIES.entries()) {
+  for (const [index, entry] of entries.entries()) {
     let score = 0;
     for (const keyword of entry.keywords) {
       const normalizedKeyword = normalizeText(keyword);
@@ -103,8 +104,19 @@ export function FaqChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>(readSavedMessages);
+  const [faqEntries, setFaqEntries] = useState<FaqEntry[]>(FAQ_ENTRIES);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const suggestedQuestions = useMemo(() => FAQ_ENTRIES.slice(0, 4), []);
+  const suggestedQuestions = useMemo(() => faqEntries.slice(0, 4), [faqEntries]);
+
+  useEffect(() => {
+    let active = true;
+    loadFaqEntries().then((entries) => {
+      if (active) setFaqEntries(entries);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-40)));
@@ -118,7 +130,7 @@ export function FaqChatWidget() {
     const question = value.trim();
     if (!question) return;
 
-    const answer = findFaqAnswer(question);
+    const answer = findFaqAnswer(question, faqEntries);
     const reply: ChatMessage = answer
       ? { id: `bot-${Date.now()}`, role: "bot", text: answer.answer }
       : {

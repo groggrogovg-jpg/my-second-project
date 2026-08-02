@@ -292,18 +292,26 @@ export default function FAQ() {
                 {section.title}
               </span>
             </AccordionTrigger>
-            <AccordionContent className="pb-0">
+            <AccordionContent className="pb-0" forceMount>
               <Accordion type="single" collapsible className="w-full divide-y divide-border border-t border-border bg-muted/20">
                 {section.items.map((item) => (
                   <AccordionItem
                     key={item.id}
                     value={item.id}
                     className="border-0 px-6 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-border"
+                    data-faq-item
                   >
-                    <AccordionTrigger className="text-left text-sm font-semibold text-foreground hover:no-underline hover:text-primary transition-colors py-4 pl-2">
+                    <AccordionTrigger
+                      className="text-left text-sm font-semibold text-foreground hover:no-underline hover:text-primary transition-colors py-4 pl-2"
+                      data-faq-question
+                    >
                       {item.question}
                     </AccordionTrigger>
-                    <AccordionContent className="text-sm text-muted-foreground leading-relaxed pb-4 pt-0 pl-2">
+                    <AccordionContent
+                      className="text-sm text-muted-foreground leading-relaxed pb-4 pt-0 pl-2"
+                      data-faq-answer
+                      forceMount
+                    >
                       {item.answer}
                     </AccordionContent>
                   </AccordionItem>

@@ -16,6 +16,7 @@ import ResetPassword from "@/pages/reset-password";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import SubscriptionAgreement from "@/pages/subscription-agreement";
 import { FaqChatWidget } from "@/components/faq-chat-widget";
+import FAQ from "@/components/FAQ";
 
 function Router() {
   return (
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/legal/subscription-agreement" component={SubscriptionAgreement} />
+      <Route path="/faq" component={FAQ} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/profile" component={Profile} />
       <Route path="/payment-success" component={PaymentSuccess} />
@@ -42,7 +44,7 @@ function App() {
       <TooltipProvider>
         <Toaster />
         <Router />
-        <FaqChatWidget />
+        {!new URLSearchParams(window.location.search).has("faq-source") && <FaqChatWidget />}
       </TooltipProvider>
     </QueryClientProvider>
   );
