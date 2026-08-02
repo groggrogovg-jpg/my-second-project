@@ -15,6 +15,7 @@ import Admin from "@/pages/admin";
 import ResetPassword from "@/pages/reset-password";
 import PrivacyPolicy from "@/pages/privacy-policy";
 import SubscriptionAgreement from "@/pages/subscription-agreement";
+import { FaqChatWidget } from "@/components/faq-chat-widget";
 
 function Router() {
   return (
@@ -41,6 +42,7 @@ function App() {
       <TooltipProvider>
         <Toaster />
         <Router />
+        <FaqChatWidget />
       </TooltipProvider>
     </QueryClientProvider>
   );

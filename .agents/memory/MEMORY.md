@@ -9,3 +9,4 @@
 - [PostgreSQL storage migration](pg-storage-migration.md) — аккаунты и платежи в PostgreSQL; initDb() перед registerRoutes(); rollback credited=TRUE если UPDATE app_users rowCount=0
 - [Polza image payloads](polza-image-payloads.md) — большие фото с камер нужно нормализовать перед отправкой в Polza; валидный ключ иначе выглядит как ошибка генерации
 - [Telegram support](telegram-support.md) — поддержка хранится в PostgreSQL, webhook использует production URL, повторные update_id не дублируются
+- [Local FAQ widget](local-faq-widget.md) — ответы на частые вопросы работают локально по ключевым словам, без AI/API
