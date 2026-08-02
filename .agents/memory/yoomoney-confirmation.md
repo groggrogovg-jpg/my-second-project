@@ -20,3 +20,9 @@ New Replit Secrets are not available to an already published build until that bu
 **Why:** Development and production runtimes receive secret configuration separately.
 
 **How to apply:** After adding or changing `YOOMONEY_ACCESS_TOKEN`, publish the current build before retrying production verification for the original payment label. Do not manually credit a payment before production verifies it.
+
+Payment analytics goals are emitted from the confirmed `/payment-success` flow and deduplicated by the payment label in localStorage; do not track goals from payment creation, URL-only parameters, or repeat visits.
+
+**Why:** A return URL can be revisited and payment creation does not prove that YooMoney confirmed or credited the purchase.
+
+**How to apply:** Keep package-to-goal mapping based on server-confirmed amounts/types and preserve the per-label idempotency guard when adding new payment goals.

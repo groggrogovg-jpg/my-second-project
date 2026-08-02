@@ -3,9 +3,16 @@ import { Link } from "wouter";
 import { CheckCircle, Sparkles, ArrowRight, Loader2, AlertCircle, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+declare global {
+  interface Window {
+    ym?: (counterId: number, methodName: string, ...args: any[]) => void;
+  }
+}
+
 const NANO2_KEY = "kardo_nano2_balance";
 const PRO_KEY = "kardo_pro_balance";
 const STARS_KEY = "kardo_stars";
+const METRIKA_COUNTER_ID = 111247868;
 
 const POLL_INTERVAL_MS = 2500;
 const POLL_MAX_ATTEMPTS = 20;
@@ -14,6 +21,34 @@ function getBalance(key: string): number {
   const stored = localStorage.getItem(key);
   if (stored && !isNaN(Number(stored))) return Number(stored);
   return 0;
+}
+
+function getCardsPaymentGoal(cards: number): string | null {
+  if (cards === 5) return "pay_pack_5";
+  if (cards === 11) return "pay_pack_10";
+  if (cards === 50) return "pay_pack_50";
+  if (cards === 100) return "pay_pack_100";
+  return null;
+}
+
+function getStarsPaymentGoal(stars: number): string | null {
+  if (stars === 10) return "pay_stars_10";
+  if (stars === 50) return "pay_stars_50";
+  if (stars === 100) return "pay_stars_100";
+  if (stars === 250) return "pay_stars_250";
+  return null;
+}
+
+function trackPaymentGoal(label: string, goal: string | null): void {
+  if (!goal) return;
+
+  const trackedKey = `kardo_metrika_goal_${label}`;
+  if (localStorage.getItem(trackedKey)) return;
+
+  if (typeof window.ym === "function") {
+    window.ym(METRIKA_COUNTER_ID, "reachGoal", goal);
+    localStorage.setItem(trackedKey, "1");
+  }
 }
 
 export default function PaymentSuccess() {
@@ -80,6 +115,7 @@ export default function PaymentSuccess() {
       const starsNew = starsCurrent + cards;
       localStorage.setItem(STARS_KEY, String(starsNew));
       setStarsAdded(cards);
+      trackPaymentGoal(label, getCardsPaymentGoal(cards));
       // Баланс аккаунта уже был начислен сервером атомарно в /api/payment/verify
       // (см. storage.creditConfirmedPayment) — здесь только читаем актуальное значение для отображения.
       try {
@@ -103,6 +139,7 @@ export default function PaymentSuccess() {
       setStarsAdded(amount);
       setStarsPackageName(packageName || "");
       setCurrentStarsBalance(typeof serverBalance === "number" ? serverBalance : current + amount);
+      trackPaymentGoal(label, getStarsPaymentGoal(amount));
     };
 
     const cardsFromUrl = Number(params.get("cards") || "0");

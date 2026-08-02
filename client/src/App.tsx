@@ -18,7 +18,14 @@ import SubscriptionAgreement from "@/pages/subscription-agreement";
 import { FaqChatWidget } from "@/components/faq-chat-widget";
 import FAQ from "@/components/FAQ";
 import { ThemeProvider } from "@/context/theme-context";
-import { MetrikaCounter } from "react-metrika";
+import { MetrikaCounter, ym as metrikaYm } from "react-metrika";
+
+type MetrikaYm = (counterId: number, methodName: string, ...args: any[]) => void;
+type MetrikaWindow = Window & { ym?: MetrikaYm };
+
+if (typeof window !== "undefined" && typeof (window as MetrikaWindow).ym !== "function") {
+  (window as MetrikaWindow).ym = metrikaYm as MetrikaYm;
+}
 
 function Router() {
   return (
