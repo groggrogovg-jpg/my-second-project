@@ -1820,7 +1820,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ===== ЗАМЕНА ФОНА КАРТОЧКИ ЧЕРЕЗ ИИ =====
   app.post("/api/edit-background", async (req: Request, res: Response) => {
     try {
-      const { imageUrl, prompt, modelId } = req.body as { imageUrl: string; prompt: string; modelId?: string };
+      const { imageUrl, prompt, modelId, aspectRatio } = req.body as {
+        imageUrl: string;
+        prompt: string;
+        modelId?: string;
+        aspectRatio?: string;
+      };
       if (!imageUrl || !prompt) {
         return res.status(400).json({ error: "imageUrl и prompt обязательны" });
       }
@@ -1830,6 +1835,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? BACKGROUND_MODEL_DATA[modelId as BackgroundModelId]
         : BACKGROUND_MODEL_DATA["nano-banana-2"];
       const validModelId = selectedBackgroundModel.id;
+      const supportedAspectRatios = new Set(["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "auto"]);
+      const validAspectRatio = typeof aspectRatio === "string" && supportedAspectRatios.has(aspectRatio)
+        ? aspectRatio
+        : "1:1";
       console.log(`[edit-background] ▶ START model=${validModelId} prompt="${prompt.substring(0, 60)}..."`);
 
       // Проверяем звёзды для авторизованных пользователей
@@ -1872,11 +1881,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const polzaModelId = POLZA_MODEL_MAP[validModelId];
       const imageResolution = modelToResolution(validModelId);
-      console.log(`[edit-background] ▶ calling Polza.ai model=${polzaModelId} res=${imageResolution}`);
+      console.log(`[edit-background] ▶ calling Polza.ai model=${polzaModelId} ratio=${validAspectRatio} res=${imageResolution}`);
 
       const resultUrl = await callPolzaMedia({
         polzaModelId,
         prompt: fullPrompt,
+        aspectRatio: validAspectRatio,
         imageResolution,
         images: [{ buffer: imageBuffer, mimeType }],
       });

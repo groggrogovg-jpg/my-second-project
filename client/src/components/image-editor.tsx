@@ -45,13 +45,14 @@ function measureTextWidth(text: string, fontSize: number, fontStyle: string): nu
 
 interface Props {
   imageUrl: string;
+  aspectRatio?: string;
   onClose: () => void;
   stars: number;
   onStarsChange?: (n: number) => void;
   isTrial?: boolean;
 }
 
-export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, isTrial = false }: Props) {
+export default function ImageEditor({ imageUrl, aspectRatio = "1:1", onClose, stars, onStarsChange, isTrial = false }: Props) {
   const [isAuth, setIsAuth] = useState(false);
   const [hasBalance, setHasBalance] = useState(false);
   useEffect(() => {
@@ -431,7 +432,12 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, i
       const resp = await fetch("/api/edit-background", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl: imageUrl, prompt: bgPrompt.trim(), modelId: bgModel }),
+        body: JSON.stringify({
+          imageUrl,
+          prompt: bgPrompt.trim(),
+          modelId: bgModel,
+          aspectRatio,
+        }),
       });
       if (!resp.ok) {
         const text = await resp.text();

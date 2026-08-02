@@ -50,3 +50,9 @@ description: Правильные эндпоинты, модели и форма
 **Why:** Polza.ai — российский прокси для AI-моделей. Они реализовали только chat/completions и собственный /media эндпоинт. OpenAI /images/edits и /images/generations (с input image) не поддерживаются.
 
 **How to apply:** Всегда использовать `fetch("https://polza.ai/api/v1/media", ...)` для image generation, а не openai.images.edit(). Для LLM-анализа использовать openai SDK с baseURL polza.ai, модель "openai/gpt-5.4-mini".
+
+Для `gpt-image-1.5` Polza требует обязательный `input.aspect_ratio`; при редактировании фона нужно передавать соотношение исходной карточки, а для старых записей использовать `1:1`.
+
+**Why:** Production вернул `400 BAD_REQUEST`, когда GPT Image 1.5 получил изображение и prompt без `aspect_ratio`.
+
+**How to apply:** Передавать и проверять aspect ratio на сервере, не полагаться только на значение из клиента.
