@@ -1,4 +1,3 @@
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Sparkles, ChevronRight } from "lucide-react";
 
 type FAQItem = {
@@ -279,48 +278,49 @@ export default function FAQ() {
         </p>
       </div>
 
-      <Accordion type="single" collapsible className="w-full divide-y divide-border rounded-2xl border border-border bg-background overflow-hidden">
+      <div className="w-full divide-y divide-border rounded-2xl border border-border bg-background overflow-hidden">
         {FAQ_SECTIONS.map((section) => (
-          <AccordionItem
+          <div
             key={section.id}
-            value={section.id}
-            className="border-0 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-border"
+            className="faq-section border-0 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-border"
           >
-            <AccordionTrigger className="text-left px-6 py-4 text-sm font-bold text-foreground hover:no-underline hover:text-primary transition-colors [&[data-state=open]>svg]:rotate-90">
+            <input
+              id={`faq-${section.id}`}
+              type="checkbox"
+              className="faq-toggle sr-only"
+              aria-controls={`faq-content-${section.id}`}
+              aria-label={`Раскрыть раздел «${section.title}»`}
+            />
+            <label
+              htmlFor={`faq-${section.id}`}
+              className="faq-question flex items-center justify-between gap-3 cursor-pointer text-left px-6 py-4 text-sm font-bold text-foreground hover:text-primary transition-colors"
+            >
               <span className="flex items-center gap-2">
-                <ChevronRight className="w-4 h-4 text-muted-foreground transition-transform duration-200" />
+                <ChevronRight className="faq-chevron w-4 h-4 text-muted-foreground transition-transform duration-200" />
                 {section.title}
               </span>
-            </AccordionTrigger>
-            <AccordionContent className="pb-0" forceMount>
-              <Accordion type="single" collapsible className="w-full divide-y divide-border border-t border-border bg-muted/20">
+            </label>
+            <div id={`faq-content-${section.id}`} className="faq-answer" data-faq-section-content>
+              <div className="w-full divide-y divide-border border-t border-border bg-muted/20">
                 {section.items.map((item) => (
-                  <AccordionItem
+                  <article
                     key={item.id}
-                    value={item.id}
                     className="border-0 px-6 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-border"
                     data-faq-item
                   >
-                    <AccordionTrigger
-                      className="text-left text-sm font-semibold text-foreground hover:no-underline hover:text-primary transition-colors py-4 pl-2"
-                      data-faq-question
-                    >
+                    <h3 className="text-left text-sm font-semibold text-foreground py-4 pl-2" data-faq-question>
                       {item.question}
-                    </AccordionTrigger>
-                    <AccordionContent
-                      className="text-sm text-muted-foreground leading-relaxed pb-4 pt-0 pl-2"
-                      data-faq-answer
-                      forceMount
-                    >
+                    </h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed pb-4 pt-0 pl-2" data-faq-answer>
                       {item.answer}
-                    </AccordionContent>
-                  </AccordionItem>
+                    </p>
+                  </article>
                 ))}
-              </Accordion>
-            </AccordionContent>
-          </AccordionItem>
+              </div>
+            </div>
+          </div>
         ))}
-      </Accordion>
+      </div>
     </section>
   );
 }

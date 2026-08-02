@@ -184,6 +184,25 @@
     transition: background-color 200ms ease, color 200ms ease;
   }
 
+  .faq-answer {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    visibility: hidden;
+    transition: max-height 300ms ease, opacity 200ms ease, visibility 0s linear 300ms;
+  }
+
+  .faq-toggle:checked + .faq-question + .faq-answer {
+    max-height: 2400px;
+    opacity: 1;
+    visibility: visible;
+    transition: max-height 300ms ease, opacity 200ms ease, visibility 0s linear 0s;
+  }
+
+  .faq-toggle:checked + .faq-question .faq-chevron {
+    transform: rotate(90deg);
+  }
+
   header,
   main,
   section,
