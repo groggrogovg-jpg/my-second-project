@@ -128,6 +128,7 @@ export interface IStorage {
   creditConfirmedPayment(label: string, userId: string): Promise<AppUser | null>;
   grantDeveloperCredit(userId: string, nano2: number, pro: number): Promise<AppUser | undefined>;
   creditAppUserBalanceByUsername(username: string, model: "nano2" | "pro", amount: number): Promise<AppUser | undefined>;
+  addAdminStars(userId: string, amount: 1 | 5 | 10, adminLabel: string): Promise<AppUser | undefined>;
   trackUser(username: string): Promise<ServerUser>;
   getServerUser(username: string): Promise<ServerUser | undefined>;
   getAllServerUsers(): Promise<ServerUser[]>;
@@ -461,6 +462,36 @@ export class MemStorage implements IStorage {
     );
     if (!res.rows[0]) return undefined;
     return rowToAppUser(res.rows[0]);
+  }
+
+  async addAdminStars(userId: string, amount: 1 | 5 | 10, adminLabel: string): Promise<AppUser | undefined> {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const userRes = await client.query(
+        `UPDATE app_users
+         SET stars_balance = stars_balance + $1
+         WHERE id = $2
+         RETURNING *`,
+        [amount, userId],
+      );
+      if (!userRes.rows[0]) {
+        await client.query("ROLLBACK");
+        return undefined;
+      }
+      await client.query(
+        `INSERT INTO admin_star_transactions (id, user_id, amount, type, admin_label)
+         VALUES ($1, $2, $3, 'admin_added', $4)`,
+        [randomUUID(), userId, amount, adminLabel],
+      );
+      await client.query("COMMIT");
+      return rowToAppUser(userRes.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async resetUserPassword(username: string, passwordHash: string): Promise<boolean> {

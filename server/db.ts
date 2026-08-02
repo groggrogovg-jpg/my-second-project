@@ -42,6 +42,17 @@ export async function initDb(): Promise<void> {
       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS admin_star_transactions (
+      id           UUID PRIMARY KEY,
+      user_id      VARCHAR NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+      amount       INTEGER NOT NULL CHECK (amount > 0),
+      type         TEXT NOT NULL DEFAULT 'admin_added',
+      admin_label  TEXT NOT NULL DEFAULT '',
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_star_transactions_user_created
+      ON admin_star_transactions (user_id, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS "session" (
       sid    VARCHAR NOT NULL COLLATE "default",
       sess   JSON NOT NULL,

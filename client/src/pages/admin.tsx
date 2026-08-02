@@ -54,6 +54,7 @@ interface ServerUser {
   pendingPro: number;
   nano2Balance: number;
   proBalance: number;
+  starsBalance: number;
   isDeveloper: boolean;
 }
 
@@ -332,6 +333,7 @@ export default function Admin() {
 }
 
 type BalanceModal = { username: string; model: "nano2" | "pro"; amount: 1 | 3 | 5 };
+type StarsModal = { userId: string; username: string; amount: 1 | 5 | 10 };
 type PasswordModal = { username: string; newPassword?: string };
 
 function UsersTab() {
@@ -339,6 +341,7 @@ function UsersTab() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [balanceModal, setBalanceModal] = useState<Omit<BalanceModal, "amount"> & { amount: number } | null>(null);
+  const [starsModal, setStarsModal] = useState<StarsModal | null>(null);
   const [passwordModal, setPasswordModal] = useState<PasswordModal | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const { toast } = useToast();
@@ -397,6 +400,30 @@ function UsersTab() {
     }
   };
 
+  const doAddStars = async () => {
+    if (!starsModal) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/admin/add-stars", {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ userId: starsModal.userId, amount: starsModal.amount }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Не удалось начислить звёзды");
+      toast({
+        title: "Звёзды начислены",
+        description: `Пользователю ${data.user} начислено ${data.amount} ⭐`,
+      });
+      setStarsModal(null);
+      await load();
+    } catch (e: any) {
+      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const paged = users.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const totalPages = Math.ceil(users.length / PAGE_SIZE);
 
@@ -429,6 +456,7 @@ function UsersTab() {
                   <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Генераций</th>
                   <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Nano2</th>
                   <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Pro</th>
+                    <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Звёзды</th>
                   <th className="text-center px-4 py-2.5 font-medium text-muted-foreground hidden md:table-cell">Роль</th>
                   <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Действия</th>
                 </tr>
@@ -454,6 +482,11 @@ function UsersTab() {
                         {u.pendingPro > 0 && <span className="text-blue-500 ml-1">(+{u.pendingPro})</span>}
                       </span>
                     </td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className={u.starsBalance > 0 ? "text-amber-600 font-semibold" : "text-muted-foreground"}>
+                        {u.starsBalance} ⭐
+                      </span>
+                    </td>
                     <td className="px-4 py-2.5 text-center hidden md:table-cell">
                       {u.isDeveloper
                         ? <Badge variant="default" className="text-[10px]">Разраб.</Badge>
@@ -466,6 +499,17 @@ function UsersTab() {
                           onClick={() => setBalanceModal({ username: u.username, model: "nano2", amount: 1 })}>
                           Пополнить
                         </Button>
+                        {u.id && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[10px] px-2 text-amber-600 border-amber-400/50 hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                            data-testid={`button-add-stars-${u.username}`}
+                            onClick={() => setStarsModal({ userId: u.id!, username: u.username, amount: 1 })}
+                          >
+                            ➕ Звёзды
+                          </Button>
+                        )}
                         <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 text-orange-600 border-orange-400/40 hover:bg-orange-50 dark:hover:bg-orange-950/20"
                           data-testid={`button-reset-pwd-${u.username}`}
                           onClick={() => setPasswordModal({ username: u.username })}>
@@ -528,6 +572,57 @@ function UsersTab() {
                 {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : `+${balanceModal.amount} ${balanceModal.model === "nano2" ? "Nano2" : "Pro"}`}
               </Button>
               <Button variant="outline" className="flex-1" onClick={() => setBalanceModal(null)} disabled={actionLoading}>
+                Отмена
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {starsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-sm p-5 space-y-4" data-testid="modal-add-stars">
+            <h3 className="font-semibold text-foreground">Пополнить звёзды</h3>
+            <p className="text-sm text-muted-foreground">
+              Пользователь: <strong className="text-foreground">{starsModal.username}</strong>
+            </p>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground font-medium">Количество звёзд</p>
+              <div className="flex gap-2">
+                {([1, 5, 10] as const).map((amount) => (
+                  <button
+                    key={amount}
+                    onClick={() => setStarsModal((prev) => prev ? { ...prev, amount } : prev)}
+                    className={`flex-1 rounded-md border py-2 text-sm font-medium transition-colors ${
+                      starsModal.amount === amount
+                        ? "bg-amber-500 text-white border-amber-500"
+                        : "bg-background text-muted-foreground border-border hover:border-amber-400"
+                    }`}
+                    data-testid={`button-star-amount-${amount}`}
+                  >
+                    +{amount} ⭐
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Начисление произойдёт сразу и будет записано в журнал.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                className="flex-1"
+                onClick={doAddStars}
+                disabled={actionLoading}
+                data-testid="button-add-stars-confirm"
+              >
+                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : `Начислить +${starsModal.amount} ⭐`}
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setStarsModal(null)}
+                disabled={actionLoading}
+              >
                 Отмена
               </Button>
             </div>

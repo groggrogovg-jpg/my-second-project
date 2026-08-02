@@ -971,6 +971,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ ok: true, nano2Balance: updated.nano2Balance, proBalance: updated.proBalance });
   });
 
+  app.post("/api/admin/add-stars", adminOnly, async (req: Request, res: Response) => {
+    const { userId, amount } = req.body as { userId?: string; amount?: number };
+    const allowedAmounts = [1, 5, 10] as const;
+    if (!userId || !allowedAmounts.includes(amount as (typeof allowedAmounts)[number])) {
+      return res.status(400).json({ error: "userId и amount (1, 5 или 10) обязательны" });
+    }
+    const updated = await storage.addAdminStars(
+      userId,
+      amount as 1 | 5 | 10,
+      adminActorLabel(req),
+    );
+    if (!updated) return res.status(404).json({ error: "Пользователь не найден" });
+    console.log(`[admin] ✓ add_stars actor=${adminActorLabel(req)} target=${updated.email} amount=${amount} newStars=${updated.starsBalance}`);
+    return res.json({
+      ok: true,
+      user: updated.email,
+      amount,
+      starsBalance: updated.starsBalance,
+    });
+  });
+
   app.post("/api/admin/users/:username/reset-balance", adminOnly, async (req: Request, res: Response) => {
     const username = req.params.username as string;
     await storage.addPendingCredits(username, -99999, -99999);

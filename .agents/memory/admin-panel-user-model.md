@@ -22,3 +22,13 @@ supposed to apply immediately.
 Admin auth is a single shared dev-code header (`x-dev-code`), not per-admin accounts — there's
 no real "actor identity" to log beyond the code itself. When logging admin actions, a masked
 prefix of the code is an acceptable stand-in for "who performed it".
+
+Administrative star grants use the real `app_users` account ID, update `stars_balance`, and write
+an `admin_added` transaction in the same database transaction; legacy users without an account ID
+cannot receive immediate star grants.
+
+**Why:** The admin Users list includes legacy tracking records, but only PostgreSQL AppUser rows
+have an authoritative star balance and can be linked to an auditable grant.
+
+**How to apply:** Keep star-grant UI actions hidden when `ServerUser.id` is absent, and validate
+grant amounts server-side against the fixed allowlist.
