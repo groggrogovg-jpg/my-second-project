@@ -18,6 +18,7 @@ import SubscriptionAgreement from "@/pages/subscription-agreement";
 import { FaqChatWidget } from "@/components/faq-chat-widget";
 import FAQ from "@/components/FAQ";
 import { ThemeProvider } from "@/context/theme-context";
+import { MetrikaCounter } from "react-metrika";
 
 function Router() {
   return (
@@ -47,6 +48,15 @@ function App() {
           <Toaster />
           <Router />
           {!new URLSearchParams(window.location.search).has("faq-source") && <FaqChatWidget />}
+          <MetrikaCounter
+            id={111247868}
+            options={{
+              webvisor: true,
+              trackHash: true,
+              clickmap: true,
+              accurateTrackBounce: true,
+            }}
+          />
         </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>
