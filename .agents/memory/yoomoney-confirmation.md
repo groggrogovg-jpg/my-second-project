@@ -26,3 +26,9 @@ Payment analytics goals are emitted from the confirmed `/payment-success` flow a
 **Why:** A return URL can be revisited and payment creation does not prove that YooMoney confirmed or credited the purchase.
 
 **How to apply:** Keep package-to-goal mapping based on server-confirmed amounts/types and preserve the per-label idempotency guard when adding new payment goals.
+
+YooMoney payment labels are limited to 64 characters; labels containing a full UUID and timestamp can exceed this limit and prevent webhook/history matching.
+
+**Why:** A production star payment was charged but remained unconfirmed because its 65-character label produced no matching operation.
+
+**How to apply:** Generate compact labels for new payments, while keeping parsers backward-compatible with older labels.

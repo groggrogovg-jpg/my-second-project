@@ -147,7 +147,9 @@ function parsePackagePaymentLabel(label: string): { packageId: string; userId: s
 }
 
 function parseStarPaymentLabel(label: string): { packageId: string; userId: string } | null {
-  const match = label.match(/^stars-(stars_10|stars_50|stars_100|stars_250)-(.+)-\d+$/);
+  // `st-` is used for new payments because YooMoney limits labels to 64
+  // characters; the previous `stars-` format could exceed that limit.
+  const match = label.match(/^(?:stars|st)-(stars_10|stars_50|stars_100|stars_250)-(.+)-\d+$/);
   if (!match || !STAR_PACKAGE_DATA[match[1]]) return null;
   return { packageId: match[1], userId: match[2] };
 }
@@ -198,7 +200,6 @@ async function verifyYooMoneyPayment(label: string, expectedAmount: string): Pro
       "https://yoomoney.ru/api/operation-history",
       new URLSearchParams({
         records: "100",
-        type: "deposition payment",
         direction: "in",
         label,
       }).toString(),
@@ -1111,7 +1112,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
         const starPackage = STAR_PACKAGE_DATA[packageId];
         const amount = getTestPrice(starPackage.price);
-        const label = `stars-${packageId}-${sessionUserId}-${Date.now()}`;
+        // YooMoney accepts labels up to 64 characters. The old `stars-`
+        // prefix made star labels too long when combined with a UUID.
+        const label = `st-${packageId}-${sessionUserId}-${Date.now()}`;
         const wallet = process.env.VITE_YOOMONEY_WALLET || "";
         const host = req.get("host") || "localhost:5000";
         const proto = req.headers["x-forwarded-proto"] || req.protocol;
