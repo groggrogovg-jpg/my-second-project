@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { X, Download, Type, Trash2, ChevronDown, ChevronUp, Check, Minus, Plus, Sparkles, Loader2, Image as ImageIcon, Star, Eraser, Palette } from "lucide-react";
-import { MODELS, BG_EDIT_STAR_COST, type ModelId } from "@shared/schema";
+import { BACKGROUND_MODELS, type BackgroundModelId } from "@shared/schema";
 
 interface EditorElement {
   id: string;
@@ -79,7 +79,7 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, i
   const [bgEditorOpen, setBgEditorOpen] = useState(false);
   const [bgPrompt, setBgPrompt] = useState("");
   const [bgGenerating, setBgGenerating] = useState(false);
-  const [bgModel, setBgModel] = useState<ModelId>("nano-banana-pro");
+  const [bgModel, setBgModel] = useState<BackgroundModelId>("nano-banana-2");
   const [bgSuggesting, setBgSuggesting] = useState(false);
   const [bgSuggestion, setBgSuggestion] = useState<string>("");
   const [backgroundColor, setBackgroundColor] = useState("#ffffff");
@@ -419,11 +419,13 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, i
 
   const handleEditBackground = async () => {
     if (!bgPrompt.trim()) return;
-    const cost = BG_EDIT_STAR_COST;
+    const selectedModel = BACKGROUND_MODELS.find((model) => model.id === bgModel) ?? BACKGROUND_MODELS[0];
+    const cost = selectedModel.stars;
     if (stars < cost) {
       alert(`Недостаточно звёзд. Нужно ${cost} ⭐ для изменения фона.`);
       return;
     }
+    if (!confirmStarAction(cost)) return;
     setBgGenerating(true);
     try {
       const resp = await fetch("/api/edit-background", {
@@ -472,7 +474,7 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, i
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => setBgEditorOpen(true)} disabled={bgGenerating || processingLocal}>
             <ImageIcon className="w-3.5 h-3.5 mr-1.5" />
-            {bgGenerating ? "Генерация..." : `Изменить фон ${BG_EDIT_STAR_COST} ⭐`}
+            {bgGenerating ? "Генерация..." : "Изменить фон"}
           </Button>
           <Button
             size="sm"
@@ -896,33 +898,33 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, i
           <div className="space-y-2">
             <p className="text-xs font-medium text-foreground">Модель</p>
             <div className="flex gap-1.5">
-              {MODELS.map((m) => {
+              {BACKGROUND_MODELS.map((m) => {
                 const isSelected = bgModel === m.id;
-                const canAfford = stars >= BG_EDIT_STAR_COST;
+                const canAfford = stars >= m.stars;
                 return (
                   <button
                     key={m.id}
                     onClick={() => setBgModel(m.id)}
                     disabled={bgGenerating}
+                    aria-pressed={isSelected}
                     className={`flex-1 flex flex-col items-center py-2 px-1 rounded-lg border text-xs transition-all ${
                       isSelected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border bg-muted/30 hover:border-primary/40"
                     } ${!canAfford ? "opacity-60" : ""}`}
                   >
                     <span className="font-semibold text-foreground leading-tight text-center mb-0.5">{m.name}</span>
-                    <span className="text-amber-500 font-medium">{BG_EDIT_STAR_COST} ⭐</span>
+                    <span className="text-[11px] text-muted-foreground text-center leading-tight min-h-8">{m.description}</span>
+                    <span className="text-muted-foreground text-[11px] mt-1">{m.badge}</span>
+                    <span className="text-amber-500 font-medium mt-0.5">{m.stars} ⭐</span>
                   </button>
                 );
               })}
             </div>
-            <div className="text-xs text-muted-foreground space-y-1">
+            <div className="text-xs text-muted-foreground">
               {(() => {
-                const m = MODELS.find((x) => x.id === bgModel);
+                const m = BACKGROUND_MODELS.find((x) => x.id === bgModel);
                 if (!m) return null;
                 return (
-                  <>
-                    <p className="text-emerald-600">✅ {m.pros}</p>
-                    <p className="text-rose-500">⚠️ {m.cons}</p>
-                  </>
+                  <p className="text-emerald-600">✅ {m.description}</p>
                 );
               })()}
             </div>
@@ -935,7 +937,7 @@ export default function ImageEditor({ imageUrl, onClose, stars, onStarsChange, i
               {bgGenerating ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Генерация...</>
               ) : (
-                <><Sparkles className="w-4 h-4 mr-2" />{BG_EDIT_STAR_COST} ⭐</>
+                <><Sparkles className="w-4 h-4 mr-2" />{(BACKGROUND_MODELS.find((model) => model.id === bgModel) ?? BACKGROUND_MODELS[0]).stars} ⭐</>
               )}
             </Button>
           </div>

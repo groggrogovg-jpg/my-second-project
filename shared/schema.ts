@@ -119,6 +119,32 @@ export const MODELS = [
 
 export type ModelId = (typeof MODELS)[number]["id"];
 
+export const BACKGROUND_MODELS = [
+  {
+    id: "nano-banana-2",
+    name: "Nano Banana 2",
+    description: "Быстрая генерация, экономичный расход",
+    stars: 1,
+    badge: "Эконом",
+  },
+  {
+    id: "grok-imagine-image",
+    name: "Grok Imagine",
+    description: "Реалистичные фоны, хорошая работа с текстом",
+    stars: 2,
+    badge: "Стандарт",
+  },
+  {
+    id: "gpt-image-1.5",
+    name: "GPT Image 1.5",
+    description: "Максимальная детализация, точное следование промпту",
+    stars: 3,
+    badge: "Премиум",
+  },
+] as const;
+
+export type BackgroundModelId = (typeof BACKGROUND_MODELS)[number]["id"];
+
 export const ASPECT_RATIOS = [
   {
     id: "1:1",
@@ -159,8 +185,6 @@ export const TRIAL_LIMIT = 2;
 export const INITIAL_STARS = 10;
 export const VIDEO_STAR_COSTS: Record<5 | 10, number> = { 5: 5, 10: 10 };
 export const TRYON_STAR_COST = 5;
-
-export const BG_EDIT_STAR_COST = 1;
 
 export const TEST_MODE = false;
 export const TEST_PRICE_FACTOR = 0.01;

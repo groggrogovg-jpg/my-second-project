@@ -25,7 +25,7 @@ import crypto from "crypto";
 import { URL } from "url";
 import bcrypt from "bcrypt";
 import { sendPasswordResetEmail } from "./email";
-import { STAR_PACKAGES } from "@shared/schema";
+import { BACKGROUND_MODELS, STAR_PACKAGES, type BackgroundModelId } from "@shared/schema";
 
 const YM_NOTIFY_SECRET = process.env.YOOMONEY_NOTIFICATION_SECRET || "";
 const YM_ACCESS_TOKEN = process.env.YOOMONEY_ACCESS_TOKEN || "";
@@ -247,7 +247,13 @@ function getOpenAI(): OpenAI {
 const POLZA_MODEL_MAP: Record<string, string> = {
   "nano-banana-2":   "google/gemini-3.1-flash-image-preview",
   "nano-banana-pro": "google/gemini-3-pro-image-preview",
+  "grok-imagine-image": "grok-imagine-image",
+  "gpt-image-1.5": "gpt-image-1.5",
 };
+
+const BACKGROUND_MODEL_DATA = Object.fromEntries(
+  BACKGROUND_MODELS.map((model) => [model.id, model]),
+) as Record<BackgroundModelId, (typeof BACKGROUND_MODELS)[number]>;
 
 // Маппинг модели на разрешение
 function modelToResolution(model: string): "1K" | "2K" {
@@ -1699,12 +1705,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ error: "imageUrl и prompt обязательны" });
       }
 
-      const validModelId = modelId === "nano-banana-2" || modelId === "nano-banana-pro" ? modelId : "nano-banana-pro";
+      const selectedBackgroundModel = typeof modelId === "string" &&
+        Object.prototype.hasOwnProperty.call(BACKGROUND_MODEL_DATA, modelId)
+        ? BACKGROUND_MODEL_DATA[modelId as BackgroundModelId]
+        : BACKGROUND_MODEL_DATA["nano-banana-2"];
+      const validModelId = selectedBackgroundModel.id;
       console.log(`[edit-background] ▶ START model=${validModelId} prompt="${prompt.substring(0, 60)}..."`);
 
       // Проверяем звёзды для авторизованных пользователей
       const userId = req.session?.userId;
-      const cost = 1; // 1 звезда за смену фона
+      const cost = selectedBackgroundModel.stars;
       let user = null;
       if (userId) {
         user = await storage.getAppUserById(userId);
