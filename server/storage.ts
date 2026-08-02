@@ -83,6 +83,7 @@ export interface SupportChat {
   id: string;
   userId: string | null;
   telegramUserId: string;
+  userName: string;
   lastMessage: string | null;
   lastActivity: Date;
   status: "open" | "closed";
@@ -94,6 +95,7 @@ export interface SupportMessage {
   chatId: string;
   telegramUserId: string | null;
   message: string;
+  telegramUpdateId: string | null;
   isFromUser: boolean;
   isRead: boolean;
   createdAt: Date;
@@ -137,12 +139,12 @@ export interface IStorage {
   consumePendingCredits(username: string): Promise<{ nano2: number; pro: number }>;
   addErrorLog(log: Omit<ErrorLog, "id" | "createdAt">): Promise<ErrorLog>;
   getErrorLogs(): Promise<ErrorLog[]>;
-  getOrCreateSupportChat(telegramUserId: string, userId?: string): Promise<SupportChat>;
+  getOrCreateSupportChat(telegramUserId: string, userId?: string, userName?: string): Promise<SupportChat>;
   getSupportChat(id: string): Promise<SupportChat | undefined>;
   getSupportChatByTelegramId(telegramUserId: string): Promise<SupportChat | undefined>;
   listSupportChats(): Promise<SupportChat[]>;
   updateSupportChatStatus(id: string, status: "open" | "closed"): Promise<SupportChat | undefined>;
-  addSupportMessage(msg: Omit<SupportMessage, "id" | "createdAt">): Promise<SupportMessage>;
+  addSupportMessage(msg: Omit<SupportMessage, "id" | "createdAt" | "telegramUpdateId"> & { telegramUpdateId?: string | null }): Promise<SupportMessage>;
   getSupportMessages(chatId: string): Promise<SupportMessage[]>;
   markMessagesRead(chatId: string): Promise<void>;
   countUnreadMessages(chatId: string): Promise<number>;
@@ -195,6 +197,32 @@ function rowToPayment(row: Record<string, any>): PaymentRecord {
     username: row.username ?? "",
     userId: row.user_id ?? null,
     email: row.user_email ?? row.email ?? row.username ?? null,
+    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+  };
+}
+
+function rowToSupportChat(row: Record<string, any>): SupportChat {
+  return {
+    id: String(row.id),
+    userId: row.user_id ?? null,
+    telegramUserId: String(row.telegram_user_id),
+    userName: String(row.user_name ?? row.telegram_user_id ?? ""),
+    lastMessage: row.last_message ?? null,
+    lastActivity: row.last_activity ? new Date(row.last_activity) : new Date(),
+    status: row.status === "closed" ? "closed" : "open",
+    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+  };
+}
+
+function rowToSupportMessage(row: Record<string, any>): SupportMessage {
+  return {
+    id: String(row.id),
+    chatId: String(row.chat_id),
+    telegramUserId: row.telegram_user_id ?? null,
+    message: String(row.message ?? ""),
+    telegramUpdateId: row.telegram_update_id ?? null,
+    isFromUser: Boolean(row.is_from_user),
+    isRead: Boolean(row.is_read),
     createdAt: row.created_at ? new Date(row.created_at) : new Date(),
   };
 }
@@ -834,76 +862,116 @@ export class MemStorage implements IStorage {
     return [...this.errorLogs];
   }
 
-  // ── Support (in-memory) ──────────────────────────────────────────────────
+  // ── Support (PostgreSQL) ────────────────────────────────────────────────
 
-  async getOrCreateSupportChat(telegramUserId: string, userId?: string): Promise<SupportChat> {
-    const existing = Array.from(this.supportChats.values()).find(
-      (c) => c.telegramUserId === telegramUserId
+  async getOrCreateSupportChat(telegramUserId: string, userId?: string, userName?: string): Promise<SupportChat> {
+    const res = await pool.query(
+      `INSERT INTO support_chats (telegram_user_id, user_id, user_name)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (telegram_user_id) DO UPDATE SET
+         user_id = COALESCE(EXCLUDED.user_id, support_chats.user_id),
+         user_name = CASE
+           WHEN EXCLUDED.user_name <> '' THEN EXCLUDED.user_name
+           ELSE support_chats.user_name
+         END
+       RETURNING *`,
+      [telegramUserId, userId || null, userName?.trim() || telegramUserId],
     );
-    if (existing) return existing;
-    const chat: SupportChat = {
-      id: randomUUID(), userId: userId || null, telegramUserId,
-      lastMessage: null, lastActivity: new Date(), status: "open", createdAt: new Date(),
-    };
-    this.supportChats.set(chat.id, chat);
-    return chat;
+    return rowToSupportChat(res.rows[0]);
   }
 
   async getSupportChat(id: string): Promise<SupportChat | undefined> {
-    return this.supportChats.get(id);
+    const res = await pool.query("SELECT * FROM support_chats WHERE id=$1", [id]);
+    return res.rows[0] ? rowToSupportChat(res.rows[0]) : undefined;
   }
 
   async getSupportChatByTelegramId(telegramUserId: string): Promise<SupportChat | undefined> {
-    return Array.from(this.supportChats.values()).find(
-      (c) => c.telegramUserId === telegramUserId
-    );
+    const res = await pool.query("SELECT * FROM support_chats WHERE telegram_user_id=$1", [telegramUserId]);
+    return res.rows[0] ? rowToSupportChat(res.rows[0]) : undefined;
   }
 
   async listSupportChats(): Promise<SupportChat[]> {
-    return Array.from(this.supportChats.values()).sort(
-      (a, b) => b.lastActivity.getTime() - a.lastActivity.getTime()
-    );
+    const res = await pool.query("SELECT * FROM support_chats ORDER BY last_activity DESC");
+    return res.rows.map(rowToSupportChat);
   }
 
   async updateSupportChatStatus(id: string, status: "open" | "closed"): Promise<SupportChat | undefined> {
-    const chat = this.supportChats.get(id);
-    if (!chat) return undefined;
-    chat.status = status;
-    this.supportChats.set(id, chat);
-    return chat;
+    const res = await pool.query(
+      "UPDATE support_chats SET status=$1 WHERE id=$2 RETURNING *",
+      [status, id],
+    );
+    return res.rows[0] ? rowToSupportChat(res.rows[0]) : undefined;
   }
 
-  async addSupportMessage(msg: Omit<SupportMessage, "id" | "createdAt">): Promise<SupportMessage> {
-    const message: SupportMessage = { id: randomUUID(), ...msg, createdAt: new Date() };
-    this.supportMessages.set(message.id, message);
-    const chat = this.supportChats.get(msg.chatId);
-    if (chat) {
-      chat.lastMessage = msg.message;
-      chat.lastActivity = new Date();
-      this.supportChats.set(chat.id, chat);
+  async addSupportMessage(msg: Omit<SupportMessage, "id" | "createdAt" | "telegramUpdateId"> & { telegramUpdateId?: string | null }): Promise<SupportMessage> {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const inserted = await client.query(
+        `INSERT INTO support_messages
+           (chat_id, telegram_user_id, message, telegram_update_id, is_from_user, is_read)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT DO NOTHING
+         RETURNING *`,
+        [
+          msg.chatId,
+          msg.telegramUserId ?? null,
+          msg.message,
+          msg.telegramUpdateId ?? null,
+          msg.isFromUser,
+          msg.isRead,
+        ],
+      );
+
+      if (inserted.rows[0]) {
+        await client.query(
+          `UPDATE support_chats
+           SET last_message=$1, last_activity=NOW()
+           WHERE id=$2`,
+          [msg.message, msg.chatId],
+        );
+        await client.query("COMMIT");
+        return rowToSupportMessage(inserted.rows[0]);
+      }
+
+      const existing = msg.telegramUpdateId
+        ? await client.query(
+            "SELECT * FROM support_messages WHERE telegram_update_id=$1",
+            [msg.telegramUpdateId],
+          )
+        : { rows: [] };
+      await client.query("COMMIT");
+      if (existing.rows[0]) return rowToSupportMessage(existing.rows[0]);
+      throw new Error("Не удалось сохранить сообщение поддержки");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
     }
-    return message;
   }
 
   async getSupportMessages(chatId: string): Promise<SupportMessage[]> {
-    return Array.from(this.supportMessages.values())
-      .filter((m) => m.chatId === chatId)
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const res = await pool.query(
+      "SELECT * FROM support_messages WHERE chat_id=$1 ORDER BY created_at ASC",
+      [chatId],
+    );
+    return res.rows.map(rowToSupportMessage);
   }
 
   async markMessagesRead(chatId: string): Promise<void> {
-    for (const [id, msg] of this.supportMessages.entries()) {
-      if (msg.chatId === chatId && msg.isFromUser) {
-        msg.isRead = true;
-        this.supportMessages.set(id, msg);
-      }
-    }
+    await pool.query(
+      "UPDATE support_messages SET is_read=TRUE WHERE chat_id=$1 AND is_from_user=TRUE",
+      [chatId],
+    );
   }
 
   async countUnreadMessages(chatId: string): Promise<number> {
-    return Array.from(this.supportMessages.values()).filter(
-      (m) => m.chatId === chatId && m.isFromUser && !m.isRead
-    ).length;
+    const res = await pool.query(
+      "SELECT COUNT(*)::int AS count FROM support_messages WHERE chat_id=$1 AND is_from_user=TRUE AND is_read=FALSE",
+      [chatId],
+    );
+    return Number(res.rows[0]?.count ?? 0);
   }
 }
 

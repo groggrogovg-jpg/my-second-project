@@ -48,6 +48,7 @@ export const supportChats = pgTable("support_chats", {
   id: varchar("id").primaryKey().default("gen_random_uuid()"),
   userId: varchar("user_id"),
   telegramUserId: varchar("telegram_user_id").notNull(),
+  userName: text("user_name").notNull().default(""),
   lastMessage: text("last_message"),
   lastActivity: timestamp("last_activity").defaultNow(),
   status: text("status").notNull().default("open"),
@@ -59,8 +60,9 @@ export const supportMessages = pgTable("support_messages", {
   chatId: varchar("chat_id").notNull(),
   telegramUserId: varchar("telegram_user_id"),
   message: text("message").notNull(),
-  isFromUser: text("is_from_user").notNull().default("true"),
-  isRead: text("is_read").notNull().default("false"),
+  telegramUpdateId: text("telegram_update_id"),
+  isFromUser: boolean("is_from_user").notNull().default(true),
+  isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

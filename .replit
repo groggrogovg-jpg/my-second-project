@@ -42,6 +42,7 @@ waitForPort = 5000
 
 [userenv.shared]
 VITE_YOOMONEY_WALLET = "4100119336049373"
+TELEGRAM_WEBHOOK_URL = "https://kardomatikcard.replit.app/api/telegram-webhook"
 
 [agent]
 stack = "FULLSTACK_JS"

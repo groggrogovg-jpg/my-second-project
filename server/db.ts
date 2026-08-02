@@ -63,6 +63,41 @@ export async function initDb(): Promise<void> {
     ALTER TABLE "session" DROP CONSTRAINT IF EXISTS "session_pkey";
     ALTER TABLE "session" ADD CONSTRAINT "session_pkey" PRIMARY KEY (sid);
     CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" (expire);
+
+    CREATE TABLE IF NOT EXISTS support_chats (
+      id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id            VARCHAR,
+      telegram_user_id   TEXT NOT NULL,
+      user_name          TEXT NOT NULL DEFAULT '',
+      last_message       TEXT,
+      last_activity      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      status             TEXT NOT NULL DEFAULT 'open',
+      created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE support_chats ADD COLUMN IF NOT EXISTS user_name TEXT NOT NULL DEFAULT '';
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_support_chats_telegram_user
+      ON support_chats (telegram_user_id);
+    CREATE INDEX IF NOT EXISTS idx_support_chats_activity
+      ON support_chats (last_activity DESC);
+
+    CREATE TABLE IF NOT EXISTS support_messages (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      chat_id             UUID NOT NULL REFERENCES support_chats(id) ON DELETE CASCADE,
+      telegram_user_id    TEXT,
+      message             TEXT NOT NULL,
+      telegram_update_id  TEXT,
+      is_from_user        BOOLEAN NOT NULL DEFAULT TRUE,
+      is_read             BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS telegram_update_id TEXT;
+    ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS is_from_user BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS is_read BOOLEAN NOT NULL DEFAULT FALSE;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_support_messages_update
+      ON support_messages (telegram_update_id)
+      WHERE telegram_update_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_support_messages_chat_created
+      ON support_messages (chat_id, created_at);
   `);
-  console.log("[db] tables ready: app_users, payments");
+  console.log("[db] tables ready: app_users, payments, support");
 }

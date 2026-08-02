@@ -29,6 +29,7 @@ type AdminTab = "users" | "payments" | "logs" | "support";
 interface SupportChat {
   id: string;
   telegramUserId: string;
+  userName: string;
   lastMessage: string | null;
   lastActivity: string;
   status: "open" | "closed";
@@ -40,9 +41,19 @@ interface SupportMessage {
   chatId: string;
   telegramUserId: string | null;
   message: string;
+  telegramUpdateId: string | null;
   isFromUser: boolean;
   isRead: boolean;
   createdAt: string;
+}
+
+interface TelegramStatus {
+  configured: boolean;
+  webhook: {
+    url: string;
+    pendingUpdateCount: number;
+    lastError: string | null;
+  } | null;
 }
 
 interface ServerUser {
@@ -816,6 +827,8 @@ function SupportTab() {
   const [replyText, setReplyText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
+  const [telegramSetupLoading, setTelegramSetupLoading] = useState(false);
   const [pollInterval, setPollInterval] = useState<ReturnType<typeof setInterval> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const { toast } = useToast();
@@ -858,6 +871,37 @@ function SupportTab() {
     setLoading(true);
     loadChats().finally(() => setLoading(false));
   }, []);
+
+  const loadTelegramStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/telegram/status", { headers: adminHeaders() });
+      if (res.ok) setTelegramStatus(await res.json());
+    } catch {
+      // Status is informational and should not block the support inbox.
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTelegramStatus();
+  }, [loadTelegramStatus]);
+
+  const setupTelegramWebhook = async () => {
+    setTelegramSetupLoading(true);
+    try {
+      const res = await fetch("/api/admin/telegram/setup-webhook", {
+        method: "POST",
+        headers: adminHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Не удалось подключить Telegram");
+      toast({ title: "Telegram подключён", description: `Webhook: ${data.url}` });
+      await loadTelegramStatus();
+    } catch (e: any) {
+      toast({ title: "Ошибка Telegram", description: e.message, variant: "destructive" });
+    } finally {
+      setTelegramSetupLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (pollInterval) clearInterval(pollInterval);
@@ -909,10 +953,29 @@ function SupportTab() {
       {/* Chat list */}
       <Card className="w-72 flex-shrink-0 flex flex-col overflow-hidden">
         <div className="p-3 border-b border-border flex items-center justify-between">
-          <span className="text-sm font-semibold text-foreground">Чаты</span>
-          {totalUnread > 0 && (
-            <Badge variant="default" className="text-[10px]">{totalUnread} непрочитано</Badge>
-          )}
+          <div>
+            <span className="text-sm font-semibold text-foreground">Чаты</span>
+            <span className={`block text-[10px] ${telegramStatus?.webhook?.url ? "text-green-600" : "text-muted-foreground"}`}>
+              {telegramStatus?.webhook?.url ? "Telegram подключён" : telegramStatus?.configured ? "Webhook не настроен" : "Токен Telegram не задан"}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            {totalUnread > 0 && (
+              <Badge variant="default" className="text-[10px]">{totalUnread}</Badge>
+            )}
+            {telegramStatus?.configured && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-[10px] px-2"
+                onClick={setupTelegramWebhook}
+                disabled={telegramSetupLoading}
+                title="Зарегистрировать production webhook"
+              >
+                {telegramSetupLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : "Подключить"}
+              </Button>
+            )}
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto">
           {loading ? (
@@ -928,7 +991,7 @@ function SupportTab() {
                   className={`w-full text-left p-3 transition-colors ${selectedChatId === chat.id ? "bg-muted" : "hover:bg-muted/50"}`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-foreground truncate">{chat.telegramUserId}</span>
+                    <span className="text-xs font-medium text-foreground truncate">{chat.userName || chat.telegramUserId}</span>
                     {chat.unreadCount > 0 && (
                       <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center font-bold">
                         {chat.unreadCount}
@@ -956,7 +1019,10 @@ function SupportTab() {
             <div className="p-3 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CircleDot className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium text-foreground">{selectedChat.telegramUserId}</span>
+                <div>
+                  <span className="text-sm font-medium text-foreground">{selectedChat.userName || selectedChat.telegramUserId}</span>
+                  <span className="block text-[10px] text-muted-foreground">Telegram: {selectedChat.telegramUserId}</span>
+                </div>
                 <Badge variant={selectedChat.status === "open" ? "default" : "secondary"} className="text-[10px]">
                   {selectedChat.status === "open" ? "Открыт" : "Закрыт"}
                 </Badge>

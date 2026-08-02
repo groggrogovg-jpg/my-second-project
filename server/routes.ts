@@ -1479,6 +1479,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ===== Telegram Bot Webhook и Support API =====
   const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
   const TELEGRAM_API_BASE = TELEGRAM_BOT_TOKEN ? `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}` : "";
+  const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || "";
 
   async function sendTelegramMessage(chatId: string | number, text: string): Promise<boolean> {
     if (!TELEGRAM_BOT_TOKEN) return false;
@@ -1486,7 +1487,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const resp = await axios.post(`${TELEGRAM_API_BASE}/sendMessage`, {
         chat_id: chatId,
         text,
-        parse_mode: "HTML",
       });
       return resp.data?.ok === true;
     } catch (err: any) {
@@ -1495,35 +1495,110 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   }
 
+  async function setTelegramWebhook(webhookUrl: string): Promise<{ ok: boolean; description?: string }> {
+    if (!TELEGRAM_BOT_TOKEN) {
+      return { ok: false, description: "TELEGRAM_BOT_TOKEN не настроен" };
+    }
+    try {
+      const body: Record<string, string> = { url: webhookUrl };
+      if (TELEGRAM_WEBHOOK_SECRET) body.secret_token = TELEGRAM_WEBHOOK_SECRET;
+      const resp = await axios.post(`${TELEGRAM_API_BASE}/setWebhook`, body, { timeout: 10000 });
+      return { ok: resp.data?.ok === true, description: resp.data?.description };
+    } catch (err: any) {
+      const detail = err.response?.data?.description || err.message;
+      console.error(`[telegram] setWebhook error: ${detail}`);
+      return { ok: false, description: detail };
+    }
+  }
+
+  function requestWebhookUrl(req: Request): string {
+    const configured = process.env.TELEGRAM_WEBHOOK_URL?.trim();
+    if (configured) return configured.replace(/\/+$/, "");
+    const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+    const protocol = forwardedProto || req.protocol || "https";
+    return `${protocol}://${req.get("host")}/api/telegram-webhook`;
+  }
+
   // Telegram webhook — публичный, без авторизации
-  app.post("/api/telegram/webhook", express.json(), async (req: Request, res: Response) => {
+  const telegramWebhookHandler = async (req: Request, res: Response) => {
     try {
       const { message, callback_query } = req.body;
-      if (message && message.text && message.from) {
+      if (TELEGRAM_WEBHOOK_SECRET &&
+          req.header("x-telegram-bot-api-secret-token") !== TELEGRAM_WEBHOOK_SECRET) {
+        return res.status(401).json({ error: "Неверная подпись webhook" });
+      }
+      if (message && message.from && message.chat) {
         const telegramUserId = String(message.from.id);
-        const text = message.text;
-        const chatId = message.chat.id;
-        console.log(`[telegram] message from ${telegramUserId}: "${text.substring(0, 50)}${text.length > 50 ? "..." : ""}"`);
+        const telegramChatId = String(message.chat.id);
+        const text = typeof message.text === "string"
+          ? message.text
+          : typeof message.caption === "string" ? message.caption : "";
+        const userName = [
+          message.from.first_name,
+          message.from.last_name,
+        ].filter(Boolean).join(" ") || (message.from.username ? `@${message.from.username}` : telegramUserId);
+        if (!text.trim()) {
+          return res.status(200).json({ ok: true });
+        }
+        console.log(`[telegram] message from ${telegramUserId} chat=${telegramChatId}: "${text.substring(0, 50)}${text.length > 50 ? "..." : ""}"`);
 
         // Создаём или находим чат
-        const supportChat = await storage.getOrCreateSupportChat(telegramUserId);
+        const supportChat = await storage.getOrCreateSupportChat(telegramChatId, undefined, userName);
         // Сохраняем сообщение
         await storage.addSupportMessage({
           chatId: supportChat.id,
           telegramUserId,
           message: text,
+          telegramUpdateId: req.body?.update_id != null ? String(req.body.update_id) : null,
           isFromUser: true,
           isRead: false,
         });
         // Авто-ответ пользователю
-        await sendTelegramMessage(chatId, "Ваше сообщение передано оператору. Ответим в ближайшее время.");
+        await sendTelegramMessage(telegramChatId, "Ваше сообщение передано оператору. Ответим в ближайшее время.");
       }
       res.status(200).json({ ok: true });
     } catch (err: any) {
       console.error(`[telegram] webhook error: ${err.message}`);
       res.status(200).json({ ok: true });
     }
+  };
+  app.post("/api/telegram-webhook", express.json(), telegramWebhookHandler);
+  // Старый URL оставлен рабочим, чтобы уже настроенный бот не потерял сообщения.
+  app.post("/api/telegram/webhook", express.json(), telegramWebhookHandler);
+
+  app.post("/api/admin/telegram/setup-webhook", adminOnly, async (req: Request, res: Response) => {
+    const webhookUrl = requestWebhookUrl(req);
+    const result = await setTelegramWebhook(webhookUrl);
+    if (!result.ok) return res.status(502).json({ error: result.description || "Не удалось зарегистрировать webhook" });
+    console.log(`[telegram] webhook registered url=${webhookUrl}`);
+    return res.json({ ok: true, url: webhookUrl, description: result.description || "Webhook установлен" });
   });
+
+  app.get("/api/admin/telegram/status", adminOnly, async (_req: Request, res: Response) => {
+    if (!TELEGRAM_BOT_TOKEN) return res.json({ configured: false, webhook: null });
+    try {
+      const response = await axios.get(`${TELEGRAM_API_BASE}/getWebhookInfo`, { timeout: 10000 });
+      return res.json({
+        configured: true,
+        webhook: response.data?.result
+          ? {
+              url: response.data.result.url || "",
+              pendingUpdateCount: response.data.result.pending_update_count || 0,
+              lastError: response.data.result.last_error_message || null,
+            }
+          : null,
+      });
+    } catch {
+      return res.json({ configured: true, webhook: null });
+    }
+  });
+
+  if (TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_URL) {
+    void setTelegramWebhook(process.env.TELEGRAM_WEBHOOK_URL.trim().replace(/\/+$/, "")).then((result) => {
+      if (result.ok) console.log(`[telegram] startup webhook registered`);
+      else console.warn(`[telegram] startup webhook registration skipped: ${result.description || "unknown error"}`);
+    });
+  }
 
   // Админ маршруты поддержки
   app.get("/api/support/chats", adminOnly, async (_req: Request, res: Response) => {
