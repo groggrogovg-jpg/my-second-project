@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { Menu, X, Sparkles, CreditCard, MessageCircle, User, LogIn, LogOut } from "lucide-react";
 import type { ComponentType } from "react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export interface MobileMenuItem {
   href: string;
@@ -97,6 +98,7 @@ export function MobileMenu({
                   </Link>
                 );
               })}
+              <ThemeToggle mobile />
               {isAuth ? (
                 <button
                   onClick={() => {

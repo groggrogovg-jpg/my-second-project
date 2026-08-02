@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Sparkles, ArrowLeft } from "lucide-react";
 import { MobileMenu, type MobileMenuItem } from "@/components/mobile-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
 import type { ReactNode } from "react";
 
 interface HeaderProps {
@@ -78,6 +79,7 @@ export function Header({
         {/* Right side (desktop) + mobile menu */}
         <div className="flex items-center gap-2">
           <div className="hidden md:flex items-center gap-2">
+            <ThemeToggle />
             {desktopRight}
           </div>
           <MobileMenu

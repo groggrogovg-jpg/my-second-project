@@ -170,8 +170,32 @@
     @apply border-border;
   }
 
+  html {
+    color-scheme: light;
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+
+  header,
+  main,
+  section,
+  article,
+  button,
+  input,
+  textarea,
+  select,
+  [role="dialog"] {
+    transition-property: background-color, border-color, color, box-shadow;
+    transition-duration: 200ms;
+    transition-timing-function: ease;
   }
 }
 

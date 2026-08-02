@@ -17,6 +17,7 @@ import PrivacyPolicy from "@/pages/privacy-policy";
 import SubscriptionAgreement from "@/pages/subscription-agreement";
 import { FaqChatWidget } from "@/components/faq-chat-widget";
 import FAQ from "@/components/FAQ";
+import { ThemeProvider } from "@/context/theme-context";
 
 function Router() {
   return (
@@ -40,13 +41,15 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-        {!new URLSearchParams(window.location.search).has("faq-source") && <FaqChatWidget />}
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+          {!new URLSearchParams(window.location.search).has("faq-source") && <FaqChatWidget />}
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 

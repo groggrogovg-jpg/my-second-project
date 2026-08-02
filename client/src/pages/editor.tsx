@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import Konva from "konva";
 import { MobileMenu } from "@/components/mobile-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const CANVAS_W = 800;
 const CANVAS_H = 800;
@@ -362,6 +363,7 @@ export default function Editor() {
             </Badge>
           )}
           <div className="ml-auto flex items-center gap-2">
+            <ThemeToggle />
             <Button size="sm" variant="outline" onClick={addText} data-testid="button-add-text">
               <Type className="w-3.5 h-3.5 mr-1.5" />
               Текст
