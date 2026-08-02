@@ -24,7 +24,7 @@ import path from "path";
 import crypto from "crypto";
 import { URL } from "url";
 import bcrypt from "bcrypt";
-import { sendPasswordResetEmail } from "./email";
+import { sendPasswordResetEmail, sendPaymentConfirmationEmail } from "./email";
 import { BACKGROUND_MODELS, STAR_PACKAGES, type BackgroundModelId } from "@shared/schema";
 
 const YM_NOTIFY_SECRET = process.env.YOOMONEY_NOTIFICATION_SECRET || "";
@@ -150,6 +150,42 @@ function parseStarPaymentLabel(label: string): { packageId: string; userId: stri
   const match = label.match(/^stars-(stars_10|stars_50|stars_100|stars_250)-(.+)-\d+$/);
   if (!match || !STAR_PACKAGE_DATA[match[1]]) return null;
   return { packageId: match[1], userId: match[2] };
+}
+
+function paymentPackageName(label: string, payment: { cardsIncluded: number; starsToAdd: number; modelType: string }): string {
+  const packagePayment = parsePackagePaymentLabel(label);
+  if (packagePayment) return PACKAGE_DATA[packagePayment.packageId].name;
+
+  const starPayment = parseStarPaymentLabel(label);
+  if (starPayment) return STAR_PACKAGE_DATA[starPayment.packageId].description;
+
+  const planMatch = label.match(/^[^-]+-(single|start|opt|brand|mini|standard|unlimited)-\d+$/);
+  if (planMatch && PLAN_DATA[planMatch[1]]) return PLAN_DATA[planMatch[1]].name;
+
+  if (payment.cardsIncluded > 0) {
+    return payment.modelType === "pro" ? "Пакет карточек Nano Banana Pro" : "Пакет карточек Nano Banana 2";
+  }
+  return "Пополнение звёзд";
+}
+
+async function sendPaymentConfirmationAfterCredit(
+  label: string,
+  payment: Awaited<ReturnType<typeof storage.getPaymentByLabel>>,
+  user: Awaited<ReturnType<typeof storage.getAppUserById>>,
+): Promise<void> {
+  if (!payment || !user) {
+    console.error(`[payment/email] Не удалось подготовить письмо: платёж или пользователь не найден label=${label}`);
+    return;
+  }
+
+  await sendPaymentConfirmationEmail({
+    to: user.email,
+    packageName: paymentPackageName(label, payment),
+    cardsIncluded: payment.cardsIncluded,
+    starsToAdd: payment.starsToAdd,
+    amount: payment.amount,
+    paidAt: payment.createdAt,
+  });
 }
 
 async function verifyYooMoneyPayment(label: string, expectedAmount: string): Promise<{ operationId: string; amount: string } | null> {
@@ -1312,6 +1348,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (ownerId && !confirmed.credited) {
           const credited = await storage.creditConfirmedPayment(label, ownerId);
           console.log(`[payment/webhook] ${credited ? "✓ credited" : "⚠ credit skipped"} label=${label} userId=${ownerId}`);
+          if (credited) {
+            const creditedPayment = await storage.getPaymentByLabel(label);
+            await sendPaymentConfirmationAfterCredit(label, creditedPayment, credited);
+          }
         } else if (!ownerId) {
           console.warn(`[payment/webhook] ⚠ payment has no user owner label=${label} username=${confirmed.username || "empty"}`);
         }
@@ -1403,6 +1443,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       creditedUser = await storage.creditConfirmedPayment(label, userId);
       if (creditedUser) {
         console.log(`[payment/verify] ✓ credited label=${label} to userId=${userId}`);
+        const creditedPayment = await storage.getPaymentByLabel(label);
+        await sendPaymentConfirmationAfterCredit(label, creditedPayment, creditedUser);
       } else {
         console.warn(`[payment/verify] ⚠ confirmed payment could not be credited label=${label} userId=${userId}`);
       }

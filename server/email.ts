@@ -73,3 +73,106 @@ export async function sendPasswordResetEmail({ to, resetUrl }: SendResetEmailPar
     // Не пробрасываем ошибку — не раскрываем пользователю технические детали.
   }
 }
+
+export interface SendPaymentConfirmationEmailParams {
+  to: string;
+  packageName: string;
+  cardsIncluded: number;
+  starsToAdd: number;
+  amount: string;
+  paidAt: Date;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/**
+ * Отправляет подтверждение успешной оплаты.
+ * Ошибки доставки намеренно не пробрасываются: баланс уже начислен
+ * и не должен зависеть от доступности SMTP.
+ */
+export async function sendPaymentConfirmationEmail({
+  to,
+  packageName,
+  cardsIncluded,
+  starsToAdd,
+  amount,
+  paidAt,
+}: SendPaymentConfirmationEmailParams): Promise<void> {
+  const recipient = to.trim();
+  if (!recipient) {
+    console.error("[email] Подтверждение оплаты не отправлено: у пользователя нет email");
+    return;
+  }
+
+  const transport = getTransporter();
+  if (!transport) {
+    console.error(`[email] Подтверждение оплаты для ${recipient} не отправлено: SMTP не настроен`);
+    return;
+  }
+
+  const safePackageName = escapeHtml(packageName);
+  const safeAmount = escapeHtml(`${amount} ₽`);
+  const formattedDate = paidAt.toLocaleString("ru-RU", {
+    dateStyle: "long",
+    timeStyle: "short",
+    timeZone: "Europe/Moscow",
+  });
+  const quantityLines = [
+    cardsIncluded > 0 ? `Карточки: ${cardsIncluded}` : "",
+    starsToAdd > 0 ? `Звёзды: ${starsToAdd} ⭐` : "",
+  ].filter(Boolean);
+  const quantityText = quantityLines.join("\n");
+  const quantityHtml = quantityLines
+    .map((line) => `<li style="margin: 4px 0;">${escapeHtml(line)}</li>`)
+    .join("");
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1f2937;">
+      <h2 style="margin-top: 0; color: #111827;">Спасибо за оплату в КардоМатик!</h2>
+      <p>Здравствуйте!</p>
+      <p>Ваш платёж успешно обработан, и покупка уже начислена на баланс аккаунта.</p>
+      <div style="margin: 20px 0; padding: 16px; border: 1px solid #e5e7eb; border-radius: 12px; background: #f9fafb;">
+        <p style="margin: 0 0 10px;"><strong>Пакет:</strong> ${safePackageName}</p>
+        <p style="margin: 0 0 10px;"><strong>Количество:</strong></p>
+        <ul style="margin: 0 0 10px; padding-left: 20px;">${quantityHtml}</ul>
+        <p style="margin: 0 0 10px;"><strong>Сумма:</strong> ${safeAmount}</p>
+        <p style="margin: 0;"><strong>Дата и время:</strong> ${escapeHtml(formattedDate)} (МСК)</p>
+      </div>
+      <p>Спасибо, что пользуетесь КардоМатик.</p>
+      <p style="font-size: 12px; color: #9ca3af;">Если вы не совершали эту оплату, обратитесь в поддержку.</p>
+    </div>
+  `;
+  const text = [
+    "Спасибо за оплату в КардоМатик!",
+    "",
+    "Здравствуйте!",
+    "Ваш платёж успешно обработан, и покупка уже начислена на баланс аккаунта.",
+    "",
+    `Пакет: ${packageName}`,
+    quantityText,
+    `Сумма: ${amount} ₽`,
+    `Дата и время: ${formattedDate} (МСК)`,
+    "",
+    "Спасибо, что пользуетесь КардоМатик.",
+  ].join("\n");
+
+  try {
+    await transport.sendMail({
+      from: `КардоМатик <${FROM_ADDRESS}>`,
+      to: recipient,
+      subject: `Оплата подтверждена — ${packageName}`,
+      text,
+      html,
+    });
+    console.log(`[email] Подтверждение оплаты отправлено на ${recipient}`);
+  } catch (err: any) {
+    console.error(`[email] Ошибка отправки подтверждения оплаты на ${recipient}:`, err.message || err);
+  }
+}
