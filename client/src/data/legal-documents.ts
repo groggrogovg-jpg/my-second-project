@@ -150,7 +150,7 @@ export const subscriptionAgreementSections: LegalSection[] = [
 ];
 
 export const subscriptionAgreementDetails = `Самозанятый гражданин Российской Федерации
-ФИО: Соколов И.Г.
+ФИО: Соколов Игорь Геннадьевич
 ИНН: 780712379290
 Статус: плательщик налога на профессиональный доход (самозанятый)
 Сайт: https://kardomatik.ru
