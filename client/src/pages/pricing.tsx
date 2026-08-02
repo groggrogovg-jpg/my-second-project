@@ -218,6 +218,7 @@ function StarsPackagesGrid({
   toast: ReturnType<typeof useToast>["toast"];
 }) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState<Record<string, boolean>>({});
 
   const handlePay = async (packageId: string) => {
     if (!isAuth) {
@@ -270,11 +271,43 @@ function StarsPackagesGrid({
                 className="w-full"
                 variant="outline"
                 onClick={() => handlePay(pkg.id)}
-                disabled={loadingId !== null}
+                disabled={loadingId !== null || !agreed[pkg.id]}
                 data-testid={`buy-stars-${pkg.id}`}
               >
                 {loadingId === pkg.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Купить"}
               </Button>
+
+              <div className="flex items-start gap-2 text-left">
+                <Checkbox
+                  id={`agree-stars-${pkg.id}`}
+                  checked={!!agreed[pkg.id]}
+                  onCheckedChange={(checked) =>
+                    setAgreed((prev) => ({ ...prev, [pkg.id]: checked === true }))
+                  }
+                  className="mt-0.5"
+                />
+                <Label
+                  htmlFor={`agree-stars-${pkg.id}`}
+                  className="text-xs text-muted-foreground leading-snug cursor-pointer"
+                >
+                  Принимаю{" "}
+                  <Link
+                    href="/legal/subscription-agreement"
+                    className="text-primary hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Соглашение о подписке
+                  </Link>
+                  {" "}и{" "}
+                  <Link
+                    href="/privacy-policy"
+                    className="text-primary hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Политику конфиденциальности
+                  </Link>
+                </Label>
+              </div>
             </div>
           </Card>
         ))}
