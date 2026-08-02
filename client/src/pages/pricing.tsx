@@ -124,8 +124,8 @@ export default function Pricing() {
         <div className="mt-6 text-center">
           <p className="text-xs text-muted-foreground">
             💳 <span className="font-medium text-foreground">Оплата работает!</span> Принимаем банковские карты, SberPay и ЮMoney. По вопросам:{" "}
-            <a href="mailto:hello@kardomatik.ru" className="text-primary hover:underline">
-              hello@kardomatik.ru
+            <a href="mailto:support@kardomatik.ru" className="text-primary hover:underline">
+              support@kardomatik.ru
             </a>
           </p>
         </div>
