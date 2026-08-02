@@ -14,3 +14,9 @@ Standalone star purchases use the same YooMoney webhook/history verification and
 **Why:** Separate star purchases must remain subject to the same anti-forgery and idempotency guarantees as existing card payments.
 
 **How to apply:** When adding another paid balance type, reuse the payment record, webhook, verification, and transactional crediting flow rather than trusting return URL parameters or creating a parallel confirmation path.
+
+New Replit Secrets are not available to an already published build until that build is published again; development can verify a YooMoney operation while production still reports the payment as unconfirmed.
+
+**Why:** Development and production runtimes receive secret configuration separately.
+
+**How to apply:** After adding or changing `YOOMONEY_ACCESS_TOKEN`, publish the current build before retrying production verification for the original payment label. Do not manually credit a payment before production verifies it.
