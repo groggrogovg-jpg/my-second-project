@@ -164,9 +164,6 @@ app.use((req, res, next) => {
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Endpoint не найден" });
   });
-  app.use("/assets", (_req, res) => {
-    res.status(404).send("Not found");
-  });
   app.use((req, res, next) => {
     if (req.path.startsWith("/.")) {
       return res.status(404).send("Not found");
