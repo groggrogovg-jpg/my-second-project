@@ -32,6 +32,12 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       external: ["onnxruntime-web", "onnxruntime-web/webgpu"],
+      output: {
+        manualChunks: {
+          vendor: ["react", "react-dom", "wouter", "@tanstack/react-query"],
+          ui: ["lucide-react"],
+        },
+      },
     },
   },
   optimizeDeps: {

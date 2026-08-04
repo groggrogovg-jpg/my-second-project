@@ -1,0 +1,202 @@
+Replit Agent промт
+plain
+## Задача: Исправить критические баги безопасности и стабильности в приложении КардоМатик
+
+Приложение: Express.js (backend) + React/Vite (frontend), хостится на Replit (Google Frontend reverse proxy). Сессии через express-session (connect.sid). База данных — скорее всего MongoDB (по наличию NoSQL-операторов в коде).
+
+---
+
+### Приоритет: КРИТИЧЕСКИЙ — исправить в первую очередь
+
+#### 1. Исправить 500 Internal Server Error при пустом теле POST-запроса на `/api/auth/login`
+Проблема: Если отправить POST на `/api/auth/login` с пустым телом (null/undefined body), сервер падает с 500.
+Ожидаемое поведение: 400 Bad Request.
+Что сделать: Добавить проверку ДО деструктуризации полей:
+```js
+if (!req.body || typeof req.body !== 'object') {
+  return res.status(400).json({ error: 'Email и пароль обязательны' });
+}
+const { email, password } = req.body;
+if (!email || !password) {
+  return res.status(400).json({ error: 'Email и пароль обязательны' });
+}
+2. Исправить 500 Internal Server Error при NoSQL-инъекции в логин
+Проблема: Отправка объекта в поле email/password (например, {"email": {"$ne": null}}) вызывает 500.
+Ожидаемое поведение: 400 Bad Request с валидацией типов.
+Что сделать: Проверять, что email и password являются строками:
+JavaScript
+if (typeof email !== 'string' || typeof password !== 'string') {
+  return res.status(400).json({ error: 'Неверный формат данных' });
+}
+Рекомендация: Установить express-validator или Joi и применить валидацию ко ВСЕМ входящим endpoint'ам (регистрация, логин, forgot-password, reset-password, generate, regenerate и т.д.).
+3. Исправить 500 Internal Server Error при Data URI в /api/suggest-background
+Проблема: {"imageUrl": "data:image/png;base64,abc"} вызывает 500 с ошибкой от внешнего AI-сервиса.
+Что сделать: Добавить валидацию URL-формата (только http/https) и try-catch для внешних запросов:
+JavaScript
+function isValidImageUrl(url) {
+  if (typeof url !== 'string') return false;
+  return /^https?:\/\/[^\s<>\"{}|\\^`\[\]]+$/.test(url);
+}
+
+// В endpoint'е:
+if (!isValidImageUrl(req.body.imageUrl)) {
+  return res.status(400).json({ error: 'Недопустимый URL изображения' });
+}
+try {
+  // внешний запрос к AI-сервису
+} catch (err) {
+  console.error('AI service error:', err.message);
+  return res.status(500).json({ error: 'Ошибка обработки изображения' });
+}
+4. Добавить флаги Secure и SameSite=Strict к сессионной cookie
+Проблема: Cookie connect.sid выглядит так: ...; Path=/; Expires=...; HttpOnly — нет Secure и SameSite.
+Что сделать: В настройках express-session добавить:
+JavaScript
+app.set('trust proxy', 1); // ОБЯЗАТЕЛЬНО, т.к. приложение за Google Frontend reverse proxy
+
+app.use(session({
+  // ... текущие настройки (secret, store и т.д.) ...
+  cookie: {
+    secure: true,        // cookie только по HTTPS
+    sameSite: 'strict',  // защита от CSRF
+    httpOnly: true,      // уже есть, оставить
+    maxAge: 30 * 24 * 60 * 60 * 1000  // или текущее значение
+  },
+  rolling: false,        // см. пункт 6
+  resave: false,
+  saveUninitialized: false
+}));
+Важно: Без app.set('trust proxy', 1) флаг secure: true сломает сессии, т.к. Replit работает за reverse proxy.
+Приоритет: ВЫСОКИЙ
+5. Добавить Rate Limiting на auth-endpoint'ы
+Проблема: 10 попыток логина и 5 параллельных регистраций проходят без блокировки.
+Что сделать: Установить express-rate-limit:
+JavaScript
+const rateLimit = require('express-rate-limit');
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 минут
+  max: 5, // 5 попыток
+  message: { error: 'Слишком много попыток, попробуйте позже' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 час
+  max: 3,
+  message: { error: 'Слишком много регистраций с этого IP' }
+});
+
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', registerLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+6. Исправить ротацию сессии при каждом запросе
+Проблема: При каждом GET /api/auth/me сервер отправляет Set-Cookie с новым session ID. Это создаёт race condition при параллельных запросах и усложняет отладку.
+Что сделать: Отключить rolling в express-session (уже указано в пункте 4):
+JavaScript
+rolling: false,
+resave: false,
+saveUninitialized: false
+7. Добавить security-заголовки для всех ответов
+Проблема: Отсутствуют X-Frame-Options, X-Content-Type-Options, Content-Security-Policy, Referrer-Policy.
+Что сделать: Установить helmet и применить глобально:
+JavaScript
+const helmet = require('helmet');
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      connectSrc: ["'self'"]
+    }
+  }
+}));
+Если helmet не установлен — установить: npm install helmet
+Приоритет: СРЕДНИЙ
+8. Настроить корректные 404-ответы для API и статических файлов
+Проблема: /api/nonexistent, /assets/fake.js, /.env возвращают index.html с 200.
+Что сделать: Добавить ПЕРЕД SPA fallback:
+JavaScript
+// API 404 — должен идти ПЕРЕД app.get('*', ...)
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ error: 'Endpoint не найден' });
+});
+
+// Assets 404
+app.use('/assets/*', (req, res) => {
+  res.status(404).send('Not found');
+});
+
+// Только после этого — fallback для React SPA
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+9. Ограничить HTTP-методы на /api/auth/me
+Проблема: GET/POST/PUT/PATCH/DELETE/OPTIONS на /api/auth/me обрабатываются. Не все методы должны быть допустимы.
+Что сделать: Явно определить только GET:
+JavaScript
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  // текущая логика
+});
+
+// Или добавить middleware 405 для всех API-роутов:
+app.use('/api/*', (req, res, next) => {
+  if (req.method === 'OPTIONS') return next(); // для preflight
+  // если роут не обработан — next() передаст в 404
+  next();
+});
+10. Исправить Content-Type для /api/promo/dev-cards
+Проблема: Endpoint возвращает text/html; charset=utf-8 вместо application/json.
+Что сделать: Убедиться, что endpoint использует res.json(...) вместо res.send(...):
+JavaScript
+app.get('/api/promo/dev-cards', (req, res) => {
+  const data = [...]; // текущие данные
+  res.json(data); // вместо res.send(data)
+});
+11. Настроить CORS явно (если API используется с других доменов)
+Проблема: OPTIONS-запрос возвращает 200, но без Access-Control-Allow-Origin/Methods/Headers.
+Что сделать: Если API не используется с других доменов — оставить как есть. Если используется — установить cors:
+JavaScript
+const cors = require('cors');
+app.use(cors({
+  origin: 'https://kardomatikcard.replit.app', // или process.env.FRONTEND_URL
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+Приоритет: НИЗКИЙ
+12. Добавить robots.txt и sitemap.xml
+Что сделать: Положить файлы robots.txt и sitemap.xml в public/ (или dist/) папку фронтенда, чтобы они раздавались как статика:
+plain
+public/robots.txt:
+User-agent: *
+Allow: /
+13. Оптимизировать JS-бандл
+Проблема: index-whHrq5OX.js весит ~918 KB.
+Что сделать: Включить code splitting в Vite:
+JavaScript
+// vite.config.js
+export default {
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          ui: ['lucide-react'], // и другие крупные библиотеки
+          editor: ['@radix-ui/*'] // если используется
+        }
+      }
+    }
+  }
+}
+Дополнительные требования:
+После всех изменений проверить, что авторизация (регистрация, логин, logout, /api/auth/me) продолжает работать корректно.
+Проверить, что фронтенд (React SPA) продолжает загружаться и работать.
+Не менять логику бизнес-правил (баланс звёзд, генерации, оплата, тарифы).
+Не удалять существующие endpoint'ы — только добавлять валидацию и защиту.
+Все изменения должны быть обратно совместимы с текущей версией фронтенда.
+После применения фиксов запустить npm install если устанавливались новые пакеты (helmet, express-rate-limit, express-validator, cors).

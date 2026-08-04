@@ -1,24 +1,26 @@
 import { Switch, Route } from "wouter";
+import { lazy, Suspense } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
-import Landing from "@/pages/landing";
-import Home from "@/pages/home";
-import Pricing from "@/pages/pricing";
-import Profile from "@/pages/profile";
-import PaymentSuccess from "@/pages/payment-success";
-import DevPage from "@/pages/dev";
-import Editor from "@/pages/editor";
-import Admin from "@/pages/admin";
-import ResetPassword from "@/pages/reset-password";
-import PrivacyPolicy from "@/pages/privacy-policy";
-import SubscriptionAgreement from "@/pages/subscription-agreement";
 import { FaqChatWidget } from "@/components/faq-chat-widget";
-import FAQ from "@/components/FAQ";
 import { ThemeProvider } from "@/context/theme-context";
 import { MetrikaCounter, ym as metrikaYm } from "react-metrika";
+
+const NotFound = lazy(() => import("@/pages/not-found"));
+const Landing = lazy(() => import("@/pages/landing"));
+const Home = lazy(() => import("@/pages/home"));
+const Pricing = lazy(() => import("@/pages/pricing"));
+const Profile = lazy(() => import("@/pages/profile"));
+const PaymentSuccess = lazy(() => import("@/pages/payment-success"));
+const DevPage = lazy(() => import("@/pages/dev"));
+const Editor = lazy(() => import("@/pages/editor"));
+const Admin = lazy(() => import("@/pages/admin"));
+const ResetPassword = lazy(() => import("@/pages/reset-password"));
+const PrivacyPolicy = lazy(() => import("@/pages/privacy-policy"));
+const SubscriptionAgreement = lazy(() => import("@/pages/subscription-agreement"));
+const FAQ = lazy(() => import("@/components/FAQ"));
 
 type MetrikaYm = (counterId: number, methodName: string, ...args: any[]) => void;
 type MetrikaWindow = Window & { ym?: MetrikaYm };
@@ -53,7 +55,9 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <Suspense fallback={<div className="min-h-screen bg-background" />}>
+            <Router />
+          </Suspense>
           {!new URLSearchParams(window.location.search).has("faq-source") && <FaqChatWidget />}
           <MetrikaCounter
             id={111247868}

@@ -6,10 +6,66 @@ import { createServer } from "http";
 import { initDb } from "./db";
 import connectPgSimple from "connect-pg-simple";
 import { pool } from "./db";
+import helmet from "helmet";
+import { rateLimit } from "express-rate-limit";
 
 const app = express();
 const httpServer = createServer(app);
 const PgSession = connectPgSimple(session);
+const sessionSecret = process.env.SESSION_SECRET;
+
+if (!sessionSecret && process.env.NODE_ENV === "production") {
+  throw new Error("SESSION_SECRET must be configured in production");
+}
+
+// Replit's published app is behind a trusted HTTPS reverse proxy.
+app.set("trust proxy", 1);
+
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        "'unsafe-eval'",
+        "https://mc.yandex.ru",
+        "https://yastatic.net",
+      ],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      connectSrc: [
+        "'self'",
+        "https://mc.yandex.ru",
+        "https://yandex.ru",
+        "https://polza.ai",
+        "wss:",
+      ],
+      frameSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'self'"],
+    },
+  },
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+}));
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Слишком много попыток, попробуйте позже" },
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Слишком много регистраций с этого IP" },
+});
 
 declare module "http" {
   interface IncomingMessage {
@@ -31,12 +87,14 @@ app.use(
       tableName: "session",
       createTableIfMissing: false,
     }),
-    secret: process.env.SESSION_SECRET || "kardomatik-secret-2025",
+    secret: sessionSecret || "kardomatik-development-secret",
     resave: false,
     saveUninitialized: false,
+    rolling: false,
     cookie: {
-      secure: false,
+      secure: true,
       httpOnly: true,
+      sameSite: "strict",
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 дней
     },
   })
@@ -51,6 +109,13 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+
+// Rate limits must be mounted before registerRoutes() so they wrap the
+// handlers rather than sitting behind them.
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", registerLimiter);
+app.use("/api/auth/forgot-password", authLimiter);
+app.use("/api/auth/reset-password", authLimiter);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -92,6 +157,21 @@ app.use((req, res, next) => {
 (async () => {
   await initDb();
   await registerRoutes(httpServer, app);
+
+  // These guards must run before either the production static fallback or
+  // Vite's development fallback, otherwise unknown URLs look like success.
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ error: "Endpoint не найден" });
+  });
+  app.use("/assets", (_req, res) => {
+    res.status(404).send("Not found");
+  });
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/.")) {
+      return res.status(404).send("Not found");
+    }
+    next();
+  });
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

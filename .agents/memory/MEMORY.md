@@ -12,3 +12,4 @@
 - [Local FAQ widget](local-faq-widget.md) — ответы на частые вопросы работают локально по ключевым словам, без AI/API
 - [Theme switching](theme-switching.md) — светлая/тёмная тема хранится в localStorage и управляется общим провайдером
 - [Legal documents](legal-documents.md) — соглашение и политика хранятся в общей структуре данных и отображаются единым компонентом
+- [Security hardening](security-hardening.md) — auth rate limits, secure sessions, Helmet, API/assets 404 и multipart для trial data-URL

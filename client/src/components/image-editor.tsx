@@ -399,11 +399,20 @@ export default function ImageEditor({ imageUrl, aspectRatio = "1:1", onClose, st
     setBgSuggesting(true);
     setBgSuggestion("");
     try {
-      const resp = await fetch("/api/suggest-background", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl: imageUrl }),
-      });
+      let request: RequestInit;
+      if (imageUrl.startsWith("data:")) {
+        const imageBlob = await (await fetch(imageUrl)).blob();
+        const form = new FormData();
+        form.append("image", imageBlob, "product.png");
+        request = { method: "POST", body: form };
+      } else {
+        request = {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageUrl }),
+        };
+      }
+      const resp = await fetch("/api/suggest-background", request);
       const data = await resp.json();
       if (!resp.ok) {
         throw new Error(data.error || "Ошибка генерации идеи");

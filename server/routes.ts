@@ -1760,28 +1760,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ===== ИИ ПОДБИРАЕТ ФОН =====
-  app.post("/api/suggest-background", async (req: Request, res: Response) => {
+  app.post("/api/suggest-background", upload.single("image"), async (req: Request, res: Response) => {
     try {
-      const { imageUrl } = req.body as { imageUrl: string };
-      if (!imageUrl) {
-        return res.status(400).json({ error: "imageUrl обязателен" });
-      }
-      if (!isTrustedImageUrl(imageUrl)) {
-        return res.status(400).json({ error: "Недопустимый URL изображения" });
-      }
-
       let imageBuffer: Buffer;
       let mimeType = "image/jpeg";
+      const imageUrl = req.body && typeof req.body === "object" && !Array.isArray(req.body)
+        ? (req.body as { imageUrl?: unknown }).imageUrl
+        : undefined;
 
-      if (imageUrl.startsWith("data:")) {
-        const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
-        if (match) {
-          mimeType = match[1];
-          imageBuffer = Buffer.from(match[2], "base64");
-        } else {
-          return res.status(400).json({ error: "Неверный формат data URL" });
-        }
+      // Trial generations are intentionally kept as data URLs in the client.
+      // Accept their bytes as multipart instead of accepting an arbitrary data:
+      // URL from a caller.
+      if (req.file) {
+        imageBuffer = req.file.buffer;
+        mimeType = req.file.mimetype;
       } else {
+        if (typeof imageUrl !== "string" || !imageUrl.trim()) {
+          return res.status(400).json({ error: "imageUrl обязателен" });
+        }
+        if (
+          !/^https?:\/\/[^\s<>"{}|\\^`\[\]]+$/i.test(imageUrl) ||
+          !isTrustedImageUrl(imageUrl)
+        ) {
+          return res.status(400).json({ error: "Недопустимый URL изображения" });
+        }
         const resp = await axios.get(imageUrl, { responseType: "arraybuffer", timeout: 15000 });
         imageBuffer = Buffer.from(resp.data);
         mimeType = String(resp.headers["content-type"] || "image/jpeg");
@@ -1813,7 +1815,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const axiosDetail = err?.response?.data ? ` [${JSON.stringify(err.response.data)}]` : "";
       const message = err.message || "Неизвестная ошибка";
       console.error(`[suggest-background] ✗ ERROR: ${message}${axiosDetail}`);
-      res.status(500).json({ error: message + axiosDetail });
+      res.status(500).json({ error: "Ошибка обработки изображения" });
     }
   });
 
@@ -1956,10 +1958,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     };
   }
 
+  function establishAuthenticatedSession(req: Request, userId: string, username: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      req.session.regenerate((err) => {
+        if (err) return reject(err);
+        req.session.userId = userId;
+        req.session.username = username;
+        resolve();
+      });
+    });
+  }
+
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
-      const { email, password } = req.body as { email: string; password: string };
-      if (!email?.trim() || !password) {
+      if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+        return res.status(400).json({ error: "Email и пароль обязательны" });
+      }
+      const { email, password } = req.body as { email?: unknown; password?: unknown };
+      if (email === undefined || password === undefined) {
+        return res.status(400).json({ error: "Email и пароль обязательны" });
+      }
+      if (typeof email !== "string" || typeof password !== "string") {
+        return res.status(400).json({ error: "Неверный формат данных" });
+      }
+      if (!email.trim() || !password) {
         return res.status(400).json({ error: "Email и пароль обязательны" });
       }
       const trimmed = email.trim().toLowerCase();
@@ -1970,8 +1992,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const passwordHash = await bcrypt.hash(password, 10);
       const user = await storage.createAppUser(trimmed, passwordHash);
       await storage.trackUser(trimmed);
-      req.session.userId = user.id;
-      req.session.username = user.username;
+      await establishAuthenticatedSession(req, user.id, user.username);
       // Применяем ожидающие зачисления от администратора (аналогично входу)
       const pending = await storage.consumePendingCredits(trimmed);
       if (pending.nano2 > 0 || pending.pro > 0) {
@@ -1988,8 +2009,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/auth/login", async (req: Request, res: Response) => {
     try {
-      const { email, password } = req.body as { email: string; password: string };
-      if (!email?.trim() || !password) {
+      if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+        return res.status(400).json({ error: "Email и пароль обязательны" });
+      }
+      const { email, password } = req.body as { email?: unknown; password?: unknown };
+      if (email === undefined || password === undefined) {
+        return res.status(400).json({ error: "Email и пароль обязательны" });
+      }
+      if (typeof email !== "string" || typeof password !== "string") {
+        return res.status(400).json({ error: "Неверный формат данных" });
+      }
+      if (!email.trim() || !password) {
         return res.status(400).json({ error: "Email и пароль обязательны" });
       }
       const user = await storage.getAppUserByUsername(email.trim());
@@ -2003,8 +2033,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         user.nano2Balance += pending.nano2;
         user.proBalance += pending.pro;
       }
-      req.session.userId = user.id;
-      req.session.username = user.username;
+      await establishAuthenticatedSession(req, user.id, user.username);
       res.json(serializeAppUser(user));
     } catch (err: any) {
       console.error("[auth/login] error:", err);
@@ -2025,6 +2054,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(serializeAppUser(user));
   });
 
+  app.all("/api/auth/me", (_req: Request, res: Response) => {
+    res.status(405).set("Allow", "GET").json({ error: "Метод не поддерживается" });
+  });
+
   // Примечание: клиентский эндпоинт для произвольной установки баланса был удалён —
   // это позволяло любому авторизованному пользователю начислить себе баланс напрямую.
   // Баланс теперь начисляется исключительно доверенными серверными путями:
@@ -2040,7 +2073,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
     try {
-      const { email } = req.body as { email: string };
+      const email = req.body && typeof req.body === "object" && !Array.isArray(req.body)
+        ? (req.body as { email?: unknown }).email
+        : undefined;
+      if (email !== undefined && typeof email !== "string") {
+        return res.status(400).json({ error: "Неверный формат данных" });
+      }
       const normalizedEmail = email?.trim().toLowerCase();
       const generic = { ok: true, message: "Если аккаунт с таким email существует, на него отправлена ссылка для восстановления пароля." };
       if (!normalizedEmail) return res.json(generic);
@@ -2086,7 +2124,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
     try {
-      const { token, password } = req.body as { token: string; password: string };
+      if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+        return res.status(400).json({ error: "Токен и пароль обязательны" });
+      }
+      const { token, password } = req.body as { token?: unknown; password?: unknown };
+      if (typeof token !== "string" || typeof password !== "string") {
+        return res.status(400).json({ error: "Неверный формат данных" });
+      }
       if (!token || !password) return res.status(400).json({ error: "Токен и пароль обязательны" });
       if (password.length < 6) return res.status(400).json({ error: "Пароль минимум 6 символов" });
       const memStorage = storage as MemStorage;
