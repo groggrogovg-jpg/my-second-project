@@ -24,9 +24,17 @@ export async function initDb(): Promise<void> {
       trial_nano2_count INTEGER NOT NULL DEFAULT 0,
       trial_pro_used    BOOLEAN NOT NULL DEFAULT FALSE,
       trial_tryon_used  BOOLEAN NOT NULL DEFAULT FALSE,
+      email_verified   BOOLEAN NOT NULL DEFAULT TRUE,
+      email_verification_token_hash TEXT,
+      email_verification_expires_at TIMESTAMPTZ,
+      email_verification_sent_at TIMESTAMPTZ,
       is_developer  BOOLEAN NOT NULL DEFAULT FALSE,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE app_users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE app_users ADD COLUMN IF NOT EXISTS email_verification_token_hash TEXT;
+    ALTER TABLE app_users ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMPTZ;
+    ALTER TABLE app_users ADD COLUMN IF NOT EXISTS email_verification_sent_at TIMESTAMPTZ;
 
     CREATE TABLE IF NOT EXISTS payments (
       label         TEXT PRIMARY KEY,

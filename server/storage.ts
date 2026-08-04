@@ -21,6 +21,7 @@ export interface AppUser extends User {
   trialNano2Count: number;
   trialProUsed: boolean;
   trialTryonUsed: boolean;
+  emailVerified: boolean;
   isDeveloper: boolean;
   createdAt: Date;
 }
@@ -110,6 +111,8 @@ export interface IStorage {
   updateStarsBalance(id: string, delta: number): Promise<void>;
   deductStars(id: string, amount: number): Promise<AppUser | null>;
   resetUserPassword(username: string, passwordHash: string): Promise<boolean>;
+  createEmailVerificationToken(userId: string): Promise<string | null>;
+  verifyEmailToken(token: string): Promise<AppUser | undefined>;
   markTrialUsed(id: string, feature: TrialFeature): Promise<void>;
   consumeEntitlement(id: string, feature: TrialFeature): Promise<{ usedTrial: boolean } | null>;
   refundEntitlement(id: string, feature: TrialFeature, usedTrial: boolean): Promise<void>;
@@ -177,6 +180,7 @@ function rowToAppUser(row: Record<string, any>): AppUser {
     trialNano2Count: Number(row.trial_nano2_count ?? 0),
     trialProUsed: Boolean(row.trial_pro_used),
     trialTryonUsed: Boolean(row.trial_tryon_used),
+    emailVerified: row.email_verified !== false,
     isDeveloper: Boolean(row.is_developer),
     createdAt: row.created_at ? new Date(row.created_at) : new Date(),
   };
@@ -341,8 +345,8 @@ export class MemStorage implements IStorage {
         (id, username, email, password_hash, nano2_cards, nano2_expires_at,
          pro_cards, pro_expires_at, stars_balance,
          trial_nano2_used, trial_nano2_count, trial_pro_used, trial_tryon_used,
-         is_developer, created_at)
-       VALUES ($1,$2,$3,$4,0,$5,0,$5,0,FALSE,0,FALSE,FALSE,FALSE,$5)`,
+         email_verified, is_developer, created_at)
+       VALUES ($1,$2,$3,$4,0,$5,0,$5,0,FALSE,0,FALSE,FALSE,FALSE,FALSE,$5)`,
       [id, normalizedEmail, normalizedEmail, passwordHash, now]
     );
     return rowToAppUser({
@@ -350,6 +354,7 @@ export class MemStorage implements IStorage {
       nano2_cards: 0, nano2_expires_at: now, pro_cards: 0, pro_expires_at: now,
       stars_balance: 0, trial_nano2_used: false, trial_nano2_count: 0,
       trial_pro_used: false, trial_tryon_used: false, is_developer: false, created_at: now,
+      email_verified: false,
     });
   }
 
@@ -405,6 +410,7 @@ export class MemStorage implements IStorage {
         await pool.query("UPDATE app_users SET nano2_cards = nano2_cards - 1 WHERE id = $1", [id]);
         return { usedTrial: false };
       }
+      if (!user.emailVerified) return null;
       if (!user.trialNano2Used) {
         await pool.query(
           "UPDATE app_users SET trial_nano2_used=TRUE, trial_nano2_count=GREATEST(1,trial_nano2_count) WHERE id=$1",
@@ -433,6 +439,7 @@ export class MemStorage implements IStorage {
       return { usedTrial: false };
     }
     if (!user.trialTryonUsed) {
+      if (!user.emailVerified) return null;
       await pool.query("UPDATE app_users SET trial_tryon_used=TRUE WHERE id=$1", [id]);
       return { usedTrial: true };
     }
@@ -528,6 +535,40 @@ export class MemStorage implements IStorage {
       [passwordHash, username]
     );
     return (res.rowCount ?? 0) > 0;
+  }
+
+  async createEmailVerificationToken(userId: string): Promise<string | null> {
+    const rawToken = randomUUID();
+    const tokenHash = this.hashToken(rawToken);
+    const res = await pool.query(
+      `UPDATE app_users
+       SET email_verification_token_hash=$1,
+           email_verification_expires_at=NOW() + INTERVAL '24 hours',
+           email_verification_sent_at=NOW()
+       WHERE id=$2
+         AND email_verified=FALSE
+         AND (email_verification_sent_at IS NULL OR email_verification_sent_at <= NOW() - INTERVAL '5 minutes')
+       RETURNING id`,
+      [tokenHash, userId],
+    );
+    return res.rows[0] ? rawToken : null;
+  }
+
+  async verifyEmailToken(token: string): Promise<AppUser | undefined> {
+    if (!token || token.length > 256) return undefined;
+    const tokenHash = this.hashToken(token);
+    const res = await pool.query(
+      `UPDATE app_users
+       SET email_verified=TRUE,
+           email_verification_token_hash=NULL,
+           email_verification_expires_at=NULL,
+           email_verification_sent_at=NULL
+       WHERE email_verification_token_hash=$1
+         AND email_verification_expires_at > NOW()
+       RETURNING *`,
+      [tokenHash],
+    );
+    return res.rows[0] ? rowToAppUser(res.rows[0]) : undefined;
   }
 
   async markTrialUsed(id: string, feature: TrialFeature): Promise<void> {

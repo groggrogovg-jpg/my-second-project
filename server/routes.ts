@@ -24,7 +24,7 @@ import path from "path";
 import crypto from "crypto";
 import { URL } from "url";
 import bcrypt from "bcrypt";
-import { sendPasswordResetEmail, sendPaymentConfirmationEmail } from "./email";
+import { sendPasswordResetEmail, sendPaymentConfirmationEmail, sendVerificationEmail } from "./email";
 import { BACKGROUND_MODELS, STAR_PACKAGES, type BackgroundModelId } from "@shared/schema";
 
 const YM_NOTIFY_SECRET = process.env.YOOMONEY_NOTIFICATION_SECRET || "";
@@ -677,6 +677,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (model === "nano-banana-pro" && effectiveCards(requestedUser.proSubscription) === 0) {
         return res.status(403).json({ error: "Доступен при покупке тарифа" });
       }
+      if (model === "nano-banana-2" &&
+          effectiveCards(requestedUser.nano2Subscription) === 0 &&
+          !requestedUser.emailVerified) {
+        return res.status(403).json({ error: "Подтвердите email, чтобы использовать бесплатные генерации" });
+      }
 
       // Сервер — источник истины по балансу/пробным попыткам, а не клиент.
       const feature: TrialFeature = model === "nano-banana-2" ? "nano2" : "pro";
@@ -758,6 +763,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       if (!req.file) return res.status(400).json({ error: "Изображение не загружено" });
 
+      const requestedUser = await storage.getAppUserById(userId);
+      if (!requestedUser) return res.status(401).json({ error: "Пользователь не найден" });
+      if (!requestedUser.emailVerified) {
+        return res.status(403).json({ error: "Подтвердите email, чтобы использовать бесплатные функции" });
+      }
+
       const imageBuffer = req.file.buffer;
       const filename = req.file.originalname || "product.jpg";
       const duration = parseInt(req.body?.duration as string) || 5;
@@ -813,6 +824,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       if (!personFile || garmentFiles.length === 0) {
         return res.status(400).json({ error: "Нужны фото модели и хотя бы 1 элемент одежды" });
+      }
+
+      const requestedUser = await storage.getAppUserById(userId);
+      if (!requestedUser) return res.status(401).json({ error: "Пользователь не найден" });
+      if (effectiveCards(requestedUser.nano2Subscription) === 0 && !requestedUser.emailVerified) {
+        return res.status(403).json({ error: "Подтвердите email, чтобы использовать бесплатную примерку" });
       }
 
       const entitlement = await storage.consumeEntitlement(userId, "tryon");
@@ -1955,7 +1972,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       trialNano2Count: user.trialNano2Count,
       trialProUsed: user.trialProUsed,
       trialTryonUsed: user.trialTryonUsed,
+      emailVerified: user.emailVerified,
     };
+  }
+
+  async function sendVerificationForUser(req: Request, user: Awaited<ReturnType<typeof storage.getAppUserById>>): Promise<boolean> {
+    if (!user || user.emailVerified) return false;
+    const token = await storage.createEmailVerificationToken(user.id);
+    if (!token) return false;
+    const verificationUrl = `${req.protocol}://${req.get("host")}/verify-email?token=${encodeURIComponent(token)}`;
+    await sendVerificationEmail({ to: user.email, verificationUrl });
+    return true;
   }
 
   function establishAuthenticatedSession(req: Request, userId: string, username: string): Promise<void> {
@@ -1993,6 +2020,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = await storage.createAppUser(trimmed, passwordHash);
       await storage.trackUser(trimmed);
       await establishAuthenticatedSession(req, user.id, user.username);
+      await sendVerificationForUser(req, user);
       // Применяем ожидающие зачисления от администратора (аналогично входу)
       const pending = await storage.consumePendingCredits(trimmed);
       if (pending.nano2 > 0 || pending.pro > 0) {
@@ -2056,6 +2084,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.all("/api/auth/me", (_req: Request, res: Response) => {
     res.status(405).set("Allow", "GET").json({ error: "Метод не поддерживается" });
+  });
+
+  app.get("/api/auth/verify-email", async (req: Request, res: Response) => {
+    try {
+      const token = typeof req.query.token === "string" ? req.query.token : "";
+      const user = await storage.verifyEmailToken(token);
+      if (!user) return res.status(400).json({ error: "Ссылка недействительна или устарела" });
+      if (req.session?.userId === user.id) {
+        req.session.emailVerified = true;
+      }
+      res.json({ ok: true, emailVerified: true });
+    } catch (err: any) {
+      console.error("[auth/verify-email] error:", err);
+      res.status(500).json({ error: "Не удалось подтвердить email" });
+    }
+  });
+
+  app.post("/api/auth/resend-verification", async (req: Request, res: Response) => {
+    try {
+      const userId = req.session?.userId;
+      if (!userId) return res.status(401).json({ error: "Не авторизован" });
+      const user = await storage.getAppUserById(userId);
+      if (!user) return res.status(401).json({ error: "Пользователь не найден" });
+      if (user.emailVerified) return res.status(400).json({ error: "Email уже подтверждён" });
+      const sent = await sendVerificationForUser(req, user);
+      if (!sent) return res.status(429).json({ error: "Письмо уже отправлено. Попробуйте через 5 минут." });
+      res.json({ ok: true, message: "Письмо подтверждения отправлено" });
+    } catch (err: any) {
+      console.error("[auth/resend-verification] error:", err);
+      res.status(500).json({ error: "Не удалось отправить письмо" });
+    }
   });
 
   // Примечание: клиентский эндпоинт для произвольной установки баланса был удалён —

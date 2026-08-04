@@ -18,6 +18,7 @@ const DevPage = lazy(() => import("@/pages/dev"));
 const Editor = lazy(() => import("@/pages/editor"));
 const Admin = lazy(() => import("@/pages/admin"));
 const ResetPassword = lazy(() => import("@/pages/reset-password"));
+const VerifyEmail = lazy(() => import("@/pages/verify-email"));
 const PrivacyPolicy = lazy(() => import("@/pages/privacy-policy"));
 const SubscriptionAgreement = lazy(() => import("@/pages/subscription-agreement"));
 const FAQ = lazy(() => import("@/components/FAQ"));
@@ -35,6 +36,7 @@ function Router() {
       <Route path="/" component={Landing} />
       <Route path="/app" component={Home} />
       <Route path="/reset-password" component={ResetPassword} />
+      <Route path="/verify-email" component={VerifyEmail} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/legal/subscription-agreement" component={SubscriptionAgreement} />
       <Route path="/faq" component={FAQ} />

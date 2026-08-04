@@ -32,6 +32,44 @@ export interface SendResetEmailParams {
   resetUrl: string;
 }
 
+export interface SendVerificationEmailParams {
+  to: string;
+  verificationUrl: string;
+}
+
+export async function sendVerificationEmail({ to, verificationUrl }: SendVerificationEmailParams): Promise<void> {
+  const transport = getTransporter();
+  if (!transport) {
+    console.warn("[email] Транспорт SMTP не создан — письмо подтверждения не отправлено");
+    return;
+  }
+
+  const safeTo = escapeHtml(to);
+  const safeUrl = escapeHtml(verificationUrl);
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1f2937;">
+      <h2 style="margin-top: 0; color: #111827;">Подтвердите email в КардоМатик</h2>
+      <p>Подтвердите адрес <strong>${safeTo}</strong>, чтобы получить доступ к бесплатным генерациям.</p>
+      <a href="${safeUrl}" style="display: inline-block; margin: 16px 0; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;">Подтвердить email</a>
+      <p style="font-size: 13px; color: #6b7280;">Ссылка действует 24 часа. Если кнопка не работает, скопируйте ссылку:<br><a href="${safeUrl}" style="color: #2563eb; word-break: break-all;">${safeUrl}</a></p>
+    </div>
+  `;
+  const text = `Подтвердите email в КардоМатик\n\nОткройте ссылку, чтобы получить доступ к бесплатным генерациям:\n${verificationUrl}\n\nСсылка действует 24 часа.`;
+
+  try {
+    await transport.sendMail({
+      from: `КардоМатик <${FROM_ADDRESS}>`,
+      to,
+      subject: "Подтвердите email в КардоМатик",
+      text,
+      html,
+    });
+    console.log(`[email] Письмо подтверждения отправлено на ${to}`);
+  } catch (err: any) {
+    console.error(`[email] Ошибка отправки письма подтверждения на ${to}:`, err.message || err);
+  }
+}
+
 /**
  * Отправляет письмо для восстановления пароля через SMTP (Beget).
  * В случае ошибки логирует её, но не выбрасывает исключение наружу —

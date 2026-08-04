@@ -47,6 +47,7 @@ interface AuthUser {
   trialNano2Count: number;
   trialProUsed: boolean;
   trialTryonUsed: boolean;
+  emailVerified: boolean;
 }
 
 type ContentTab = "photo" | "card";
@@ -87,6 +88,8 @@ export default function Home() {
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+  const [verificationLoading, setVerificationLoading] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState("");
   const [isTrialGeneration, setIsTrialGeneration] = useState(false);
   const [warningModalOpen, setWarningModalOpen] = useState(false);
 
@@ -302,8 +305,23 @@ export default function Home() {
   const currentModelTrialUsed = selectedModel === "nano-banana-2"
     ? (authUser?.trialNano2Count ?? (authUser?.trialNano2Used ? 1 : 0)) >= 2
     : true;
-  const cardTrialAvailable = isAuth && selectedModel === "nano-banana-2" && !currentModelTrialUsed;
-  const tryonTrialAvailable = isAuth && !authUser?.trialTryonUsed;
+  const cardTrialAvailable = isAuth && authUser?.emailVerified === true && selectedModel === "nano-banana-2" && !currentModelTrialUsed;
+  const tryonTrialAvailable = isAuth && authUser?.emailVerified === true && !authUser?.trialTryonUsed;
+
+  const resendVerification = async () => {
+    setVerificationLoading(true);
+    setVerificationMessage("");
+    try {
+      const response = await fetch("/api/auth/resend-verification", { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Не удалось отправить письмо");
+      setVerificationMessage(data.message || "Письмо отправлено");
+    } catch (err: any) {
+      setVerificationMessage(err.message || "Не удалось отправить письмо");
+    } finally {
+      setVerificationLoading(false);
+    }
+  };
 
   const canGenerate =
     !isAuth
@@ -655,6 +673,35 @@ export default function Home() {
         }
       />
 
+      {isAuth && !authUser?.emailVerified && (
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 pt-4">
+          <Card className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                  Подтвердите email, чтобы использовать бесплатные генерации
+                </p>
+                <p className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-1">
+                  Мы отправили ссылку на {authUser.email}. Платные генерации и купленные звёзды доступны сразу.
+                </p>
+                {verificationMessage && (
+                  <p className="text-xs text-amber-900 dark:text-amber-200 mt-2">{verificationMessage}</p>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={resendVerification}
+                disabled={verificationLoading}
+                className="border-amber-400 text-amber-900 dark:text-amber-200"
+              >
+                {verificationLoading ? "Отправка..." : "Отправить письмо ещё раз"}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
       <main className="max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-start">
           <div className="w-full lg:w-[340px] flex-shrink-0 space-y-3">
@@ -693,6 +740,7 @@ export default function Home() {
               tryonGarments={tryonGarments}
               setTryonGarments={setTryonGarments}
               isAuth={isAuth}
+               emailVerified={authUser?.emailVerified === true}
               currentBalance={currentBalance}
                nano2Balance={nano2Balance}
                proBalance={proBalance}
@@ -854,7 +902,7 @@ function GenerateBlock({
   videoCardMode, setVideoCardMode,
   videoDesc, setVideoDesc,
   tryonGarments, setTryonGarments,
-  isAuth, currentBalance, nano2Balance, proBalance, tryonBalance, cardTrialAvailable, tryonTrialAvailable,
+  isAuth, emailVerified, currentBalance, nano2Balance, proBalance, tryonBalance, cardTrialAvailable, tryonTrialAvailable,
   canGenerate, currentModel, videoStars, isPending, hasFiles,
   selectedFiles, trialNano2Count,
   onGenerate, onAuthOpen,
@@ -872,7 +920,7 @@ function GenerateBlock({
   videoDesc: string; setVideoDesc: (v: string) => void;
   tryonGarments: Record<GarmentCategory, { file: File | null; url: string | null }>;
   setTryonGarments: React.Dispatch<React.SetStateAction<Record<GarmentCategory, { file: File | null; url: string | null }>>>;
-  isAuth: boolean; currentBalance: number; nano2Balance: number; proBalance: number; tryonBalance: number; cardTrialAvailable: boolean; tryonTrialAvailable: boolean;
+  isAuth: boolean; emailVerified: boolean; currentBalance: number; nano2Balance: number; proBalance: number; tryonBalance: number; cardTrialAvailable: boolean; tryonTrialAvailable: boolean;
   canGenerate: boolean;
   currentModel: typeof MODELS[number];
   videoStars: number;
@@ -966,7 +1014,7 @@ function GenerateBlock({
           <div className="flex items-center justify-between text-xs px-1">
             <span className="text-muted-foreground">{currentBalance > 0 ? "Баланс" : "Бесплатная попытка"}</span>
             <span className={`font-medium ${currentBalance === 0 && !cardTrialAvailable ? "text-destructive" : "text-muted-foreground"}`}>
-              {currentBalance > 0 ? `${currentBalance} карт.` : cardTrialAvailable ? "доступна" : "уже использована"}
+              {currentBalance > 0 ? `${currentBalance} карт.` : !emailVerified ? "нужно подтвердить email" : cardTrialAvailable ? "доступна" : "уже использована"}
             </span>
           </div>
         )}
@@ -974,12 +1022,12 @@ function GenerateBlock({
           <div className="flex items-center justify-between text-xs px-1">
             <span className="text-muted-foreground">{tryonBalance > 0 ? "Баланс" : "Бесплатная попытка"}</span>
             <span className={`font-medium ${tryonBalance === 0 && !tryonTrialAvailable ? "text-destructive" : "text-muted-foreground"}`}>
-              {tryonBalance > 0 ? `${tryonBalance} карт.` : tryonTrialAvailable ? "доступна" : "уже использована"}
+              {tryonBalance > 0 ? `${tryonBalance} карт.` : !emailVerified ? "нужно подтвердить email" : tryonTrialAvailable ? "доступна" : "уже использована"}
             </span>
           </div>
         )}
 
-        {isAuth && activeTab === "card" && hasFiles && currentBalance === 0 && !cardTrialAvailable && (
+        {isAuth && activeTab === "card" && hasFiles && currentBalance === 0 && !cardTrialAvailable && emailVerified && (
           <div className="rounded-lg bg-muted/50 border border-border p-3 text-center space-y-2">
             <p className="text-xs font-medium text-foreground">Недостаточно карточек</p>
             <p className="text-xs text-muted-foreground">Купите пакет чтобы продолжить генерацию</p>
@@ -992,7 +1040,7 @@ function GenerateBlock({
           </div>
         )}
 
-        {isAuth && activeTab === "photo" && hasFiles && tryonBalance === 0 && !tryonTrialAvailable && (
+        {isAuth && activeTab === "photo" && hasFiles && tryonBalance === 0 && !tryonTrialAvailable && emailVerified && (
           <div className="rounded-lg bg-muted/50 border border-border p-3 text-center space-y-2">
             <p className="text-xs font-medium text-foreground">Недостаточно примерок</p>
             <p className="text-xs text-muted-foreground">Купите пакет Nano Banana 2 чтобы продолжить примерку</p>
