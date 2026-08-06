@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="gradAnim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a">
+        <animate attributeName="stop-color" values="#0f172a;#1e3a8a;#0f172a" dur="4s" repeatCount="indefinite" />
+      </stop>
+      <stop offset="100%" stop-color="#3b82f6">
+        <animate attributeName="stop-color" values="#3b82f6;#8b5cf6;#3b82f6" dur="4s" repeatCount="indefinite" />
+      </stop>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="52" height="52" rx="12" fill="url(#gradAnim)" />
+  <text x="32" y="40" font-family="Georgia, serif" font-size="34" font-weight="bold" fill="white" text-anchor="middle" letter-spacing="-3">КМ</text>
+  <line x1="18" y1="46" x2="46" y2="46" stroke="#FFD700" stroke-width="2" stroke-linecap="round">
+    <animate attributeName="opacity" values="0.3;1;0.3" dur="1.5s" repeatCount="indefinite" />
+  </line>
+</svg>
