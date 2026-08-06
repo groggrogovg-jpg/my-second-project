@@ -504,8 +504,8 @@ export default function Landing() {
               <a
                 key={contact.label}
                 href={contact.href}
-                target="_blank"
-                rel="noopener noreferrer"
+                target={contact.href.startsWith("http") ? "_blank" : undefined}
+                rel={contact.href.startsWith("http") ? "noopener noreferrer" : undefined}
                 className="flex flex-col items-center text-center gap-3 p-6 rounded-2xl border border-border bg-background hover:border-primary/40 hover:shadow-md transition-all group"
                 data-testid={`contact-${contact.label.toLowerCase()}`}
               >
