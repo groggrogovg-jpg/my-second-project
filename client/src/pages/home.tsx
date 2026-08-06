@@ -1343,7 +1343,11 @@ function ModelPills({ selected, onChange, isAuth, currentBalance, nano2Balance, 
                 )}
               {isAuth && isSelected && (
                 <span className="text-[10px] text-muted-foreground mt-0.5">
-                  {currentBalance > 0 ? `${currentBalance} осталось` : "0 карточек"}
+                  {m.id === "nano-banana-2"
+                    ? currentBalance > 0
+                      ? `${currentBalance} осталось · пробные ${Math.min(trialNano2Count, 2)}/2`
+                      : `Пробные: ${Math.min(trialNano2Count, 2)} из 2 использовано`
+                    : currentBalance > 0 ? `${currentBalance} осталось` : "Нет доступных карточек"}
                 </span>
               )}
             </button>

@@ -28,6 +28,7 @@ interface AuthUser {
   nano2ExpiresAt: string;
   proExpiresAt: string;
   trialNano2Used: boolean;
+  trialNano2Count: number;
   trialProUsed: boolean;
   trialTryonUsed: boolean;
 }
@@ -164,6 +165,9 @@ export default function Profile() {
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">
               {formatSubscriptionExpiry(authUser?.nano2ExpiresAt ?? new Date().toISOString(), nano2)}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Пробные генерации: {Math.min(authUser?.trialNano2Count ?? (authUser?.trialNano2Used ? 1 : 0), 2)} из 2 использовано
             </p>
             <div className="mt-3 flex gap-2">
               <Link href="/pricing">
