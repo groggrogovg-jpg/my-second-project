@@ -428,7 +428,7 @@ export default function Landing() {
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">Что говорят пользователи</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Реальные отзывы продавцов, которые уже создают карточки с КардоМатик
+              Отзывы продавцов, которые уже создают карточки с КардоМатик
             </p>
           </div>
 
