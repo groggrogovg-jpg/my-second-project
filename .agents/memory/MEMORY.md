@@ -17,3 +17,4 @@
 - [Static asset ordering](static-asset-ordering.md) — asset 404 guards must run after express.static or production SPAs show a white screen
 - [Promotional countdown](promo-countdown.md) — таймер акции привязан к аккаунту и сохраняется в localStorage до окончания предложения
 - [Marketplace SEO text](seo-marketplace-text.md) — SEO строится из анализа генерации, сохраняется рядом и имеет шаблонный fallback
+- [Preset virtual try-on model](preset-tryon-model.md) — примерка начинается с готовой модели, одежда загружается отдельно, AI имеет локальный fallback
