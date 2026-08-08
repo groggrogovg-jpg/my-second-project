@@ -341,6 +341,26 @@ function modelToResolution(model: string): "1K" | "2K" {
   return "1K";
 }
 
+// Grok Imagine и GPT Image 1.5 в Polza.ai принимают только квадрат,
+// портрет 2:3 или альбомный формат 3:2. Остальные форматы приводим
+// к ближайшей поддерживаемой ориентации, чтобы API не возвращал 400.
+function normalizeBackgroundAspectRatio(modelId: string, aspectRatio: string): string {
+  if (modelId !== "grok-imagine-image" && modelId !== "gpt-image-1.5") {
+    return aspectRatio;
+  }
+
+  if (aspectRatio === "1:1" || aspectRatio === "2:3" || aspectRatio === "3:2") {
+    return aspectRatio;
+  }
+
+  const [width, height] = aspectRatio.split(":").map(Number);
+  if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    return width < height ? "2:3" : width > height ? "3:2" : "1:1";
+  }
+
+  return "1:1";
+}
+
 // Вспомогательная функция: ждём мс
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -1986,6 +2006,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const validAspectRatio = typeof aspectRatio === "string" && supportedAspectRatios.has(aspectRatio)
         ? aspectRatio
         : "1:1";
+      const polzaAspectRatio = normalizeBackgroundAspectRatio(validModelId, validAspectRatio);
       console.log(`[edit-background] ▶ START model=${validModelId} prompt="${prompt.substring(0, 60)}..."`);
 
       // Проверяем звёзды для авторизованных пользователей
@@ -2028,12 +2049,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const polzaModelId = POLZA_MODEL_MAP[validModelId];
       const imageResolution = modelToResolution(validModelId);
-      console.log(`[edit-background] ▶ calling Polza.ai model=${polzaModelId} ratio=${validAspectRatio} res=${imageResolution}`);
+      console.log(`[edit-background] ▶ calling Polza.ai model=${polzaModelId} ratio=${polzaAspectRatio}${polzaAspectRatio !== validAspectRatio ? ` (source ${validAspectRatio})` : ""} res=${imageResolution}`);
 
       const resultUrl = await callPolzaMedia({
         polzaModelId,
         prompt: fullPrompt,
-        aspectRatio: validAspectRatio,
+        aspectRatio: polzaAspectRatio,
         imageResolution,
         images: [{ buffer: imageBuffer, mimeType }],
       });
