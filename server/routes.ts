@@ -4,6 +4,7 @@ import { createServer, type Server } from "http";
 import { storage, MemStorage, effectiveCards, type TrialFeature } from "./storage";
 import { applyTrialWatermark, bufferToDataUrl } from "./watermark";
 import multer from "multer";
+import fs from "fs";
 
 /**
  * Скачивает итоговое изображение с Polza.ai и, если это пробная генерация,
@@ -16,6 +17,48 @@ async function processResultImage(remoteUrl: string, isTrial: boolean): Promise<
   if (!isTrial) return remoteUrl;
   const watermarked = await applyTrialWatermark(buffer);
   return bufferToDataUrl(watermarked, "image/png");
+}
+
+async function processResultBuffer(buffer: Buffer, isTrial: boolean): Promise<string> {
+  const finalBuffer = isTrial ? await applyTrialWatermark(buffer) : buffer;
+  return bufferToDataUrl(finalBuffer, "image/png");
+}
+
+function getDefaultTryonModel(): { buffer: Buffer; mimeType: string; filename: string } {
+  const candidates = [
+    path.resolve(process.cwd(), "client/public/tryon/model.jpg"),
+    path.resolve(process.cwd(), "dist/public/tryon/model.jpg"),
+  ];
+  const modelPath = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!modelPath) {
+    throw new Error("Предустановленная модель примерки не найдена");
+  }
+  return {
+    buffer: fs.readFileSync(modelPath),
+    mimeType: "image/jpeg",
+    filename: "предустановленная-модель.jpg",
+  };
+}
+
+async function createTryonOverlay(personBuffer: Buffer, garmentFile: Express.Multer.File): Promise<Buffer> {
+  const person = sharp(personBuffer, { failOn: "none" });
+  const metadata = await person.metadata();
+  const personWidth = metadata.width || 1024;
+  const personHeight = metadata.height || 1536;
+  const garmentWidth = Math.max(240, Math.floor(personWidth * 0.7));
+  const garment = await sharp(garmentFile.buffer, { failOn: "none" })
+    .rotate()
+    .resize({ width: garmentWidth, height: Math.floor(personHeight * 0.65), fit: "inside", withoutEnlargement: false })
+    .png()
+    .toBuffer();
+  const garmentMeta = await sharp(garment).metadata();
+  const left = Math.max(0, Math.floor((personWidth - (garmentMeta.width || garmentWidth)) / 2));
+  const top = Math.max(0, Math.floor(personHeight * 0.16));
+  return person
+    .resize({ width: personWidth, height: personHeight, fit: "inside", withoutEnlargement: true })
+    .composite([{ input: garment, left, top }])
+    .png()
+    .toBuffer();
 }
 import OpenAI from "openai";
 import axios from "axios";
@@ -888,9 +931,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const personFile = files?.person?.[0];
       const garmentFiles = files?.garment || [];
 
-      if (!personFile || garmentFiles.length === 0) {
-        return res.status(400).json({ error: "Нужны фото модели и хотя бы 1 элемент одежды" });
+      if (garmentFiles.length === 0) {
+        return res.status(400).json({ error: "Загрузите хотя бы 1 элемент одежды" });
       }
+      const defaultModel = personFile ? null : getDefaultTryonModel();
+      const modelBuffer = personFile?.buffer || defaultModel!.buffer;
+      const modelMimeType = personFile?.mimetype || defaultModel!.mimeType;
+      const modelFilename = personFile?.originalname || defaultModel!.filename;
 
       const requestedUser = await storage.getAppUserById(userId);
       if (!requestedUser) return res.status(401).json({ error: "Пользователь не найден" });
@@ -903,14 +950,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(403).json({ error: "Нет доступных генераций. Пополните баланс." });
       }
 
-      console.log(`[generate-tryon] ▶ START person=${personFile.originalname} garments=${garmentFiles.length} trial=${entitlement.usedTrial}`);
+       console.log(`[generate-tryon] ▶ START person=${modelFilename} garments=${garmentFiles.length} trial=${entitlement.usedTrial}`);
 
       let generation: Awaited<ReturnType<typeof storage.createGeneration>>;
       try {
         generation = await storage.createGeneration({
           userId,
           sessionId: null,
-          originalImageUrl: `data:${personFile.mimetype};base64,${personFile.buffer.toString("base64")}`,
+           originalImageUrl: `data:${modelMimeType};base64,${modelBuffer.toString("base64")}`,
           status: "generating",
           model: "nano-banana-2",
           aspectRatio: "9:16",
@@ -927,12 +974,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       (async () => {
         try {
           console.log(`[generate-tryon] ▶ Calling Polza.ai for tryon id=${generation.id}`);
-          const resultUrl = await generateTryonWithPolza(
-            personFile.buffer, personFile.originalname, personFile.mimetype,
-            garmentFiles,
-          );
-          const finalUrl = await processResultImage(resultUrl, entitlement.usedTrial);
-          await storage.updateGeneration(generation.id, { status: "done", resultImageUrl: finalUrl, usedTrial: entitlement.usedTrial });
+           let finalUrl: string;
+           let processingNotice: string | null = null;
+           try {
+             const resultUrl = await generateTryonWithPolza(
+               modelBuffer, modelFilename, modelMimeType,
+               garmentFiles,
+             );
+             finalUrl = await processResultImage(resultUrl, entitlement.usedTrial);
+           } catch (aiError: any) {
+             processingNotice = "AI-примерка временно недоступна. Показан локальный оверлей одежды на предустановленной модели.";
+             console.warn(`[generate-tryon] AI unavailable, using local overlay: ${aiError?.message || "unknown error"}`);
+             const overlay = await createTryonOverlay(modelBuffer, garmentFiles[0]);
+             finalUrl = await processResultBuffer(overlay, entitlement.usedTrial);
+           }
+           await storage.updateGeneration(generation.id, {
+             status: "done",
+             resultImageUrl: finalUrl,
+             processingNotice,
+             usedTrial: entitlement.usedTrial,
+           });
           console.log(`[generate-tryon] ✓ Polza.ai done id=${generation.id} trial=${entitlement.usedTrial} url=${finalUrl.substring(0, 80)}...`);
         } catch (err: any) {
           const axiosDetail = err?.response?.data ? ` [${JSON.stringify(err.response.data)}]` : "";

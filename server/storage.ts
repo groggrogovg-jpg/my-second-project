@@ -739,6 +739,7 @@ export class MemStorage implements IStorage {
        seoText: (gen as any).seoText ?? null,
       kieTaskId: gen.kieTaskId ?? null,
       resultImageUrl: gen.resultImageUrl ?? null,
+       processingNotice: (gen as any).processingNotice ?? null,
       backgroundTaskId: gen.backgroundTaskId ?? null,
       backgroundImageUrl: gen.backgroundImageUrl ?? null,
       status: gen.status ?? "pending",

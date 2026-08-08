@@ -371,7 +371,7 @@ export default function Home() {
       : activeTab === "card"
        ? (selectedModel === "nano-banana-pro" ? currentBalance > 0 : (currentBalance > 0 || cardTrialAvailable)) && selectedFiles.length > 0
       : activeTab === "photo"
-      ? (tryonBalance > 0 || tryonTrialAvailable) && selectedFiles.length > 0 && hasAnyGarment
+       ? (tryonBalance > 0 || tryonTrialAvailable) && hasAnyGarment
       : false;
 
   const cardMutation = useMutation({
@@ -430,9 +430,8 @@ export default function Home() {
   });
 
   const tryonMutation = useMutation({
-    mutationFn: async ({ personFile, garmentFiles }: { personFile: File; garmentFiles: File[] }) => {
+    mutationFn: async ({ garmentFiles }: { garmentFiles: File[] }) => {
       const formData = new FormData();
-      formData.append("person", personFile);
       garmentFiles.forEach((f) => formData.append("garment", f));
       if (authUser?.username) formData.append("username", authUser.username);
       const response = await fetch("/api/generate-tryon", { method: "POST", body: formData });
@@ -479,10 +478,9 @@ export default function Home() {
   const handleGenerate = () => {
     if (!canGenerate) return;
     if (activeTab === "photo") {
-      if (!selectedFiles[0]) return;
       const garmentFiles = Object.values(tryonGarments).map((g) => g.file).filter(Boolean) as File[];
       if (garmentFiles.length === 0) return;
-      tryonMutation.mutate({ personFile: selectedFiles[0], garmentFiles });
+      tryonMutation.mutate({ garmentFiles });
     } else {
       if (!selectedFiles[0]) return;
       cardMutation.mutate(selectedFiles[0]);
@@ -748,6 +746,7 @@ export default function Home() {
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-start">
           <div className="w-full lg:w-[340px] flex-shrink-0 space-y-3">
             <PhotoBlock
+               activeTab={activeTab}
                selectedFiles={selectedFiles}
               previewUrls={previewUrls}
               onFilesAdd={handleFilesAdd}
@@ -882,8 +881,9 @@ function Nano2PromoBanner({ secondsLeft }: { secondsLeft: number }) {
 }
 
 function PhotoBlock({
-  selectedFiles, previewUrls, onFilesAdd, onRemove, onDrop, fileInputRef,
+  activeTab, selectedFiles, previewUrls, onFilesAdd, onRemove, onDrop, fileInputRef,
 }: {
+  activeTab: ContentTab;
   selectedFiles: File[];
   previewUrls: string[];
   onFilesAdd: (files: FileList | File[]) => void;
@@ -896,11 +896,21 @@ function PhotoBlock({
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold text-foreground">Модель</span>
+        <span className="text-sm font-semibold text-foreground">{activeTab === "photo" ? "Предустановленная модель" : "Модель"}</span>
         <span className="text-2xl font-bold text-muted-foreground/30 leading-none">01</span>
       </div>
 
-      {selectedFiles.length === 0 ? (
+      {activeTab === "photo" ? (
+        <div className="space-y-3">
+          <div className="rounded-xl overflow-hidden border border-primary/20 bg-muted/20">
+            <img src="/tryon/model.jpg" alt="Предустановленная модель для примерки" className="w-full max-h-80 object-contain" data-testid="img-preset-model" />
+          </div>
+          <div className="rounded-lg bg-primary/5 border border-primary/20 p-3">
+            <p className="text-sm font-medium text-foreground">Модель уже загружена</p>
+            <p className="text-xs text-muted-foreground mt-1">Загрузите фото одежды для примерки</p>
+          </div>
+        </div>
+      ) : selectedFiles.length === 0 ? (
         <div
           className={`rounded-xl border-2 border-dashed transition-colors flex flex-col items-center justify-center py-8 sm:py-10 px-3 sm:px-4 cursor-pointer ${
             dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 bg-muted/20"
@@ -1063,10 +1073,9 @@ function GenerateBlock({
       )}
 
       {activeTab === "photo" && (
-        <TryonTabContent
+           <TryonTabContent
           tryonGarments={tryonGarments}
           setTryonGarments={setTryonGarments}
-          hasPersonPhoto={hasFiles}
         />
       )}
 
@@ -1112,7 +1121,7 @@ function GenerateBlock({
           </div>
         )}
 
-        {isAuth && activeTab === "photo" && hasFiles && tryonBalance === 0 && !tryonTrialAvailable && emailVerified && (
+        {isAuth && activeTab === "photo" && hasAnyGarment && tryonBalance === 0 && !tryonTrialAvailable && emailVerified && (
           <div className="rounded-lg bg-muted/50 border border-border p-3 text-center space-y-2">
             <p className="text-xs font-medium text-foreground">Недостаточно примерок</p>
             <p className="text-xs text-muted-foreground">Купите пакет Nano Banana 2 чтобы продолжить примерку</p>
@@ -1126,15 +1135,12 @@ function GenerateBlock({
         )}
 
         {isAuth && !(activeTab === "card" && hasFiles && currentBalance === 0 && !cardTrialAvailable) &&
-         !(activeTab === "photo" && hasFiles && tryonBalance === 0 && !tryonTrialAvailable) && (
+         !(activeTab === "photo" && hasAnyGarment && tryonBalance === 0 && !tryonTrialAvailable) && (
           <>
             {activeTab === "card" && !hasFiles && (
               <p className="text-xs text-muted-foreground text-center">Сначала загрузите фото товара</p>
             )}
-            {activeTab === "photo" && !hasFiles && (
-              <p className="text-xs text-muted-foreground text-center">Загрузите фото модели в блоке выше</p>
-            )}
-            {activeTab === "photo" && hasFiles && !hasAnyGarment && (
+            {activeTab === "photo" && !hasAnyGarment && (
               <p className="text-xs text-muted-foreground text-center">Загрузите фото одежды ниже</p>
             )}
             <Button
@@ -1149,9 +1155,9 @@ function GenerateBlock({
               ) : activeTab === "photo" ? (
                 <>
                   <Sparkles className="w-4 h-4 mr-2" />
-                  {hasFiles && hasAnyGarment
+                    {hasAnyGarment
                     ? (tryonBalance > 0 ? "Примерить · 1 карточка" : "Примерить (бесплатно)")
-                    : "Загрузите фото и одежду"}
+                      : "Загрузите одежду"}
                 </>
               ) : (
                 <>
@@ -1165,7 +1171,7 @@ function GenerateBlock({
           </>
         )}
 
-        {!isAuth && hasFiles && (
+        {!isAuth && ((activeTab === "photo" && hasAnyGarment) || (activeTab === "card" && hasFiles)) && (
           <Button
             className="w-full font-semibold"
             size="lg"
@@ -1271,14 +1277,14 @@ function CardTabContent({
 }
 
 function TryonTabContent({
-  tryonGarments, setTryonGarments, hasPersonPhoto,
+   tryonGarments, setTryonGarments,
 }: {
   tryonGarments: Record<GarmentCategory, { file: File | null; url: string | null }>;
   setTryonGarments: React.Dispatch<React.SetStateAction<Record<GarmentCategory, { file: File | null; url: string | null }>>>;
-  hasPersonPhoto: boolean;
 }) {
   const activeRef = useRef<GarmentCategory | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [draggingCategory, setDraggingCategory] = useState<GarmentCategory | null>(null);
 
   const handleGarmentSelect = (files: FileList | null) => {
     if (!files || !files[0] || !activeRef.current) return;
@@ -1287,6 +1293,17 @@ function TryonTabContent({
     setTryonGarments((prev) => ({
       ...prev,
       [cat]: { file, url: URL.createObjectURL(file) },
+    }));
+  };
+
+  const handleGarmentDrop = (event: React.DragEvent, category: GarmentCategory) => {
+    event.preventDefault();
+    setDraggingCategory(null);
+    const file = event.dataTransfer.files?.[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    setTryonGarments((prev) => ({
+      ...prev,
+      [category]: { file, url: URL.createObjectURL(file) },
     }));
   };
 
@@ -1312,19 +1329,9 @@ function TryonTabContent({
         </p>
       </div>
 
-      <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-foreground">1. Модель человека</p>
-          <span className={`text-xs px-1.5 py-0.5 rounded ${hasPersonPhoto ? "bg-green-500/10 text-green-600" : "bg-muted text-muted-foreground"}`}>
-            {hasPersonPhoto ? "✓ Загружено" : "Блок выше ↑"}
-          </span>
-        </div>
-        <p className="text-xs text-muted-foreground">Загрузите фото модели в блоке «Ваш товар» вверху страницы</p>
-      </div>
-
       <div>
         <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-semibold text-foreground">2. Одежда</p>
+          <p className="text-xs font-semibold text-foreground">Фото одежды</p>
           <span className="text-xs text-muted-foreground">
             {Object.values(tryonGarments).filter(g => g.file).length} / 5 вещей
           </span>
@@ -1358,11 +1365,22 @@ function TryonTabContent({
                 ) : (
                   <button
                     onClick={() => openPicker(cat.id)}
-                    className="w-full rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors py-3 flex flex-col items-center gap-1"
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setDraggingCategory(cat.id);
+                    }}
+                    onDragLeave={() => setDraggingCategory(null)}
+                    onDrop={(event) => handleGarmentDrop(event, cat.id)}
+                    className={`w-full rounded-lg border-2 border-dashed transition-colors py-3 flex flex-col items-center gap-1 ${
+                      draggingCategory === cat.id
+                        ? "border-primary bg-primary/10"
+                        : "border-border hover:border-primary/50"
+                    }`}
                     data-testid={`button-upload-garment-${cat.id}`}
                   >
                     <ImagePlus className="w-5 h-5 text-muted-foreground/60" />
-                    <span className="text-xs text-muted-foreground">{cat.examples}</span>
+                    <span className="text-xs text-muted-foreground">Перетащите фото или нажмите</span>
+                    <span className="text-[11px] text-muted-foreground/70">{cat.examples}</span>
                   </button>
                 )}
               </div>

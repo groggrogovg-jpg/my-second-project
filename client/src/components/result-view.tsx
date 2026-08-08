@@ -81,13 +81,14 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
     source: "ai-analysis",
   } : null)) as SeoText | null;
   const canCopySeo = hasPaidBalance;
+  const canDownloadResult = !isTrial || hasPaidBalance;
   const protectedSeoPreview = seoText
     ? `${seoText.description.slice(0, 30)}${seoText.description.length > 30 ? "…" : ""}`
     : "";
 
   const handleDownload = async () => {
     if (!mediaUrl) return;
-    if (isTrial) {
+    if (!canDownloadResult) {
       return;
     }
     setDownloading(true);
@@ -238,9 +239,9 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
                 variant="outline"
                 size="sm"
                 onClick={handleDownload}
-                disabled={downloading || isTrial}
+                 disabled={downloading || !canDownloadResult}
                 data-testid="button-download"
-                title={isTrial ? "Скачивание доступно только для оплаченных пакетов" : undefined}
+                 title={!canDownloadResult ? "Скачивание доступно только для оплаченных пакетов" : undefined}
               >
                 <Download className="w-3.5 h-3.5 mr-1.5" />
                 {downloading ? "Скачиваем..." : "Скачать"}
@@ -317,6 +318,11 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
                     </button>
                   </Link>
                 </div>
+              </div>
+            )}
+            {isTryon && generation.processingNotice && (
+              <div className="mt-3 rounded-lg border border-sky-500/20 bg-sky-500/10 p-3 text-xs text-sky-700 dark:text-sky-300">
+                {generation.processingNotice}
               </div>
             )}
           </div>

@@ -17,6 +17,7 @@ export const generations = pgTable("generations", {
   seoText: jsonb("seo_text"),
   kieTaskId: text("kie_task_id"),
   resultImageUrl: text("result_image_url"),
+  processingNotice: text("processing_notice"),
   backgroundTaskId: text("background_task_id"),
   backgroundImageUrl: text("background_image_url"),
   status: text("status").notNull().default("pending"),
