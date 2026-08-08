@@ -120,6 +120,10 @@ export default function Home() {
     feet: { file: null, url: null },
     extra: { file: null, url: null },
   });
+  const [customTryonModel, setCustomTryonModel] = useState<{ file: File | null; url: string | null }>({
+    file: null,
+    url: null,
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -430,8 +434,9 @@ export default function Home() {
   });
 
   const tryonMutation = useMutation({
-    mutationFn: async ({ garmentFiles }: { garmentFiles: File[] }) => {
+    mutationFn: async ({ personFile, garmentFiles }: { personFile: File | null; garmentFiles: File[] }) => {
       const formData = new FormData();
+      if (personFile) formData.append("person", personFile);
       garmentFiles.forEach((f) => formData.append("garment", f));
       if (authUser?.username) formData.append("username", authUser.username);
       const response = await fetch("/api/generate-tryon", { method: "POST", body: formData });
@@ -480,7 +485,7 @@ export default function Home() {
     if (activeTab === "photo") {
       const garmentFiles = Object.values(tryonGarments).map((g) => g.file).filter(Boolean) as File[];
       if (garmentFiles.length === 0) return;
-      tryonMutation.mutate({ garmentFiles });
+      tryonMutation.mutate({ personFile: customTryonModel.file, garmentFiles });
     } else {
       if (!selectedFiles[0]) return;
       cardMutation.mutate(selectedFiles[0]);
@@ -747,6 +752,8 @@ export default function Home() {
           <div className="w-full lg:w-[340px] flex-shrink-0 space-y-3">
             <PhotoBlock
                activeTab={activeTab}
+               customTryonModel={customTryonModel}
+               onCustomTryonModelChange={setCustomTryonModel}
                selectedFiles={selectedFiles}
               previewUrls={previewUrls}
               onFilesAdd={handleFilesAdd}
@@ -881,9 +888,12 @@ function Nano2PromoBanner({ secondsLeft }: { secondsLeft: number }) {
 }
 
 function PhotoBlock({
-  activeTab, selectedFiles, previewUrls, onFilesAdd, onRemove, onDrop, fileInputRef,
+  activeTab, customTryonModel, onCustomTryonModelChange,
+  selectedFiles, previewUrls, onFilesAdd, onRemove, onDrop, fileInputRef,
 }: {
   activeTab: ContentTab;
+  customTryonModel: { file: File | null; url: string | null };
+  onCustomTryonModelChange: (model: { file: File | null; url: string | null }) => void;
   selectedFiles: File[];
   previewUrls: string[];
   onFilesAdd: (files: FileList | File[]) => void;
@@ -892,6 +902,13 @@ function PhotoBlock({
   fileInputRef: React.RefObject<HTMLInputElement>;
 }) {
   const [dragging, setDragging] = useState(false);
+  const customModelInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCustomModelChange = (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    onCustomTryonModelChange({ file, url: URL.createObjectURL(file) });
+  };
 
   return (
     <Card className="p-4">
@@ -903,11 +920,54 @@ function PhotoBlock({
       {activeTab === "photo" ? (
         <div className="space-y-3">
           <div className="rounded-xl overflow-hidden border border-primary/20 bg-muted/20">
-            <img src="/tryon/model.jpg" alt="Предустановленная модель для примерки" className="w-full max-h-80 object-contain" data-testid="img-preset-model" />
+            <img
+              src={customTryonModel.url || "/tryon/model.jpg"}
+              alt={customTryonModel.file ? "Ваша модель для примерки" : "Предустановленная модель для примерки"}
+              className="w-full max-h-80 object-contain"
+              data-testid="img-preset-model"
+            />
           </div>
           <div className="rounded-lg bg-primary/5 border border-primary/20 p-3">
-            <p className="text-sm font-medium text-foreground">Модель уже загружена</p>
+            <p className="text-sm font-medium text-foreground">
+              {customTryonModel.file ? "Используется ваша модель" : "Модель уже загружена"}
+            </p>
             <p className="text-xs text-muted-foreground mt-1">Загрузите фото одежды для примерки</p>
+          </div>
+          <input
+            ref={customModelInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            data-testid="input-custom-tryon-model"
+            onChange={(event) => {
+              handleCustomModelChange(event.target.files);
+              event.target.value = "";
+            }}
+          />
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="flex-1 text-xs"
+              onClick={() => customModelInputRef.current?.click()}
+              data-testid="button-upload-custom-model"
+            >
+              <ImagePlus className="w-3.5 h-3.5 mr-1.5" />
+              {customTryonModel.file ? "Заменить модель" : "Загрузить свою модель"}
+            </Button>
+            {customTryonModel.file && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-xs"
+                onClick={() => onCustomTryonModelChange({ file: null, url: null })}
+                data-testid="button-reset-custom-model"
+              >
+                Вернуть стандартную
+              </Button>
+            )}
           </div>
         </div>
       ) : selectedFiles.length === 0 ? (
