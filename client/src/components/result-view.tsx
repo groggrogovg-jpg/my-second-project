@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import type { Generation, GptAnalysis } from "@shared/schema";
+import type { Generation, GptAnalysis, SeoText } from "@shared/schema";
 import ImageEditor from "@/components/image-editor";
 import TextEditor from "@/components/text-editor";
 import {
@@ -41,6 +41,8 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
   const [textEditorOpen, setTextEditorOpen] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [starsBalance, setStarsBalance] = useState(0);
+  const [hasPaidBalance, setHasPaidBalance] = useState(false);
+  const [seoOpen, setSeoOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasReady, setCanvasReady] = useState(false);
   const analysis = generation.gptAnalysis as GptAnalysis | null;
@@ -57,7 +59,10 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
     fetch("/api/auth/me")
       .then((r) => r.ok ? r.json() : null)
       .then((user) => {
-        if (user && typeof user.starsBalance === "number") setStarsBalance(user.starsBalance);
+        if (user) {
+          if (typeof user.starsBalance === "number") setStarsBalance(user.starsBalance);
+          setHasPaidBalance(Number(user.nano2Balance) > 0 || Number(user.proBalance) > 0);
+        }
       })
       .catch(() => {});
   }, []);
@@ -67,6 +72,18 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   };
+
+  const seoText = (generation.seoText || (analysis ? {
+    marketplaceTitle: analysis.title || "Товар для маркетплейса",
+    description: analysis.description || "Описание товара для карточки маркетплейса.",
+    keywords: analysis.keywords || [],
+    benefits: analysis.benefits || [],
+    source: "ai-analysis",
+  } : null)) as SeoText | null;
+  const canCopySeo = hasPaidBalance;
+  const protectedSeoPreview = seoText
+    ? `${seoText.description.slice(0, 30)}${seoText.description.length > 30 ? "…" : ""}`
+    : "";
 
   const handleDownload = async () => {
     if (!mediaUrl) return;
@@ -422,7 +439,75 @@ export default function ResultView({ generation, onNewGeneration, onAnimateVideo
             </div>
           </Card>
         )}
+
+        {seoText && isCard && (
+          <Card className="overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setSeoOpen((open) => !open)}
+              className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-muted/40 transition-colors"
+              aria-expanded={seoOpen}
+              data-testid="button-toggle-seo"
+            >
+              <span className="flex items-center gap-2 font-semibold text-foreground">
+                <Target className="w-4 h-4 text-primary" />
+                SEO-оптимизация для маркетплейсов
+              </span>
+              <span className="text-xs text-muted-foreground">{seoOpen ? "Свернуть" : "Раскрыть"}</span>
+            </button>
+            {seoOpen && (
+              <div className="border-t border-border p-4 space-y-4">
+                {!canCopySeo ? (
+                  <div
+                    className="relative rounded-lg border border-amber-300/60 bg-amber-500/5 p-3 select-none"
+                    onContextMenu={(event) => event.preventDefault()}
+                    onCopy={(event) => event.preventDefault()}
+                    onCut={(event) => event.preventDefault()}
+                    onDragStart={(event) => event.preventDefault()}
+                  >
+                    <p className="text-sm text-foreground/80 blur-[1px]">{protectedSeoPreview}</p>
+                    <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/75 px-4 text-center backdrop-blur-[1px]">
+                      <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                        SEO-текст защищён от копирования в пробной версии. Купите пакет для полного доступа.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <SeoField label="Заголовок для маркетплейса" value={seoText.marketplaceTitle} onCopy={() => copyToClipboard(seoText.marketplaceTitle, "seo-title")} copied={copiedField === "seo-title"} />
+                    <SeoField label="Описание товара" value={seoText.description} onCopy={() => copyToClipboard(seoText.description, "seo-description")} copied={copiedField === "seo-description"} />
+                    <SeoField label="Ключевые слова" value={seoText.keywords.join(", ")} onCopy={() => copyToClipboard(seoText.keywords.join(", "), "seo-keywords")} copied={copiedField === "seo-keywords"} />
+                    <SeoField label="Преимущества" value={seoText.benefits.map((benefit) => `• ${benefit}`).join("\n")} onCopy={() => copyToClipboard(seoText.benefits.join("\n"), "seo-benefits")} copied={copiedField === "seo-benefits"} />
+                  </>
+                )}
+                {seoText.source === "template" && (
+                  <p className="text-xs text-muted-foreground">AI-текст недоступен, поэтому показан шаблонный вариант. Его можно уточнить после добавления информации о товаре.</p>
+                )}
+              </div>
+            )}
+          </Card>
+        )}
       </div>
     </>
+  );
+}
+
+function SeoField({ label, value, onCopy, copied }: { label: string; value: string; onCopy: () => void; copied: boolean }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
+        <button
+          type="button"
+          onClick={onCopy}
+          className="flex items-center gap-1 text-xs text-muted-foreground px-1.5 py-0.5 rounded-sm hover:bg-muted transition-colors"
+          data-testid={`button-copy-seo-${label.toLowerCase().replace(/\s+/g, "-")}`}
+        >
+          {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+          {copied ? "Скопировано" : "Копировать"}
+        </button>
+      </div>
+      <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">{value}</p>
+    </div>
   );
 }

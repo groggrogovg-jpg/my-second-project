@@ -14,6 +14,7 @@ export const generations = pgTable("generations", {
   sessionId: varchar("session_id"),
   originalImageUrl: text("original_image_url").notNull(),
   gptAnalysis: jsonb("gpt_analysis"),
+  seoText: jsonb("seo_text"),
   kieTaskId: text("kie_task_id"),
   resultImageUrl: text("result_image_url"),
   backgroundTaskId: text("background_task_id"),
@@ -92,6 +93,14 @@ export type GptAnalysis = {
   callToAction: string;
   designStyle: string;
   prompt: string;
+};
+
+export type SeoText = {
+  marketplaceTitle: string;
+  description: string;
+  keywords: string[];
+  benefits: string[];
+  source: "ai-analysis" | "template";
 };
 
 export const MODELS = [

@@ -736,6 +736,7 @@ export class MemStorage implements IStorage {
       sessionId: gen.sessionId ?? null,
       originalImageUrl: gen.originalImageUrl,
       gptAnalysis: gen.gptAnalysis ?? null,
+       seoText: (gen as any).seoText ?? null,
       kieTaskId: gen.kieTaskId ?? null,
       resultImageUrl: gen.resultImageUrl ?? null,
       backgroundTaskId: gen.backgroundTaskId ?? null,

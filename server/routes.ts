@@ -467,6 +467,65 @@ async function analyzeWithGpt(imageBase64: string, mimeType: string, notes?: str
   }
 }
 
+function buildSeoText(analysis: any, notes = ""): {
+  marketplaceTitle: string;
+  description: string;
+  keywords: string[];
+  benefits: string[];
+  source: "ai-analysis" | "template";
+} {
+  const title = String(analysis?.title || "").trim();
+  const description = String(analysis?.description || "").trim();
+  const benefits = Array.isArray(analysis?.benefits)
+    ? analysis.benefits.map((item: unknown) => String(item).trim()).filter(Boolean).slice(0, 6)
+    : [];
+  const keywords = Array.isArray(analysis?.keywords)
+    ? analysis.keywords.map((item: unknown) => String(item).trim()).filter(Boolean).slice(0, 10)
+    : [];
+  const source = analysis?.source === "template" ? "template" : "ai-analysis";
+
+  if (title || description || benefits.length || keywords.length) {
+    return {
+      marketplaceTitle: title.slice(0, 60) || "Товар для маркетплейса",
+      description: description || "Практичный товар для повседневного использования.",
+      keywords: keywords.length ? keywords : [title || "товар для маркетплейса"],
+      benefits: benefits.length ? benefits : ["Удобный вариант для повседневных задач"],
+      source,
+    };
+  }
+
+  const fallbackTitle = notes.trim().slice(0, 60) || "Товар для маркетплейса";
+  return {
+    marketplaceTitle: fallbackTitle,
+    description: notes.trim()
+      ? `${notes.trim().slice(0, 260)}. Подходит для размещения в карточке товара на маркетплейсе.`
+      : "Добавьте преимущества товара, чтобы получить более точное SEO-описание для маркетплейса.",
+    keywords: ["товар для маркетплейса", "карточка товара", "покупка онлайн"],
+    benefits: ["Понятная подача товара", "Подходит для карточки маркетплейса"],
+    source: "template",
+  };
+}
+
+function buildFallbackAnalysis(notes = "", noText = false): any {
+  const description = notes.trim()
+    ? `${notes.trim().slice(0, 260)}.`
+    : "Практичный товар для повседневного использования.";
+  return {
+    title: "Товар для маркетплейса",
+    description,
+    benefits: ["Понятная подача товара", "Подходит для повседневных задач"],
+    characteristics: [],
+    useCases: [],
+    keywords: ["товар для маркетплейса", "карточка товара", "покупка онлайн"],
+    callToAction: "Закажите онлайн",
+    designStyle: "Чистый современный стиль",
+    prompt: noText
+      ? "Create a clean professional product card with the product and a neutral studio background. Do not add text, logos, watermarks, or brand symbols."
+      : "Create a clean professional product card with a neutral studio background and simple Russian text blocks. Do not add logos, watermarks, or platform symbols.",
+    source: "template",
+  };
+}
+
 // Создаём текстовые идеи для поля "О чём рассказать" — только русский текст, без JSON
 async function suggestNotes(imageBase64: string, mimeType: string): Promise<string> {
   const systemPrompt = `Ты — топ-маркетолог мирового уровня. Проанализируй фото товара и напиши 4–5 преимуществ или уникальных свойств в продающей форме, которые было бы полезно указать продавцу для карточки на маркетплейсе.
@@ -721,11 +780,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       (async () => {
         try {
           console.log(`[generate] ▶ GPT-4o analysis starting for id=${generation.id}...`);
-          const analysis = await analyzeWithGpt(imageBase64, mimeType, notes, noText);
+          let analysis: any;
+          try {
+            analysis = await analyzeWithGpt(imageBase64, mimeType, notes, noText);
+          } catch (analysisError: any) {
+            console.warn(`[generate] AI analysis unavailable, using template fallback: ${analysisError?.message || "unknown error"}`);
+            analysis = buildFallbackAnalysis(notes, noText);
+          }
           console.log(`[generate] ✓ GPT analysis done title="${analysis.title}" designStyle="${analysis.designStyle}"`);
 
           await storage.updateGeneration(generation.id, {
             gptAnalysis: analysis,
+            seoText: buildSeoText(analysis, notes),
             status: "uploading",
           });
           console.log(`[generate] ✓ Status → uploading`);
@@ -1706,6 +1772,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Обновляем анализ и статус
       await storage.updateGeneration(generationId, {
         gptAnalysis: analysis,
+        seoText: buildSeoText(analysis, generation.notes || ""),
         status: "generating",
       });
       console.log(`[regenerate] ▶ START id=${generationId} newTitle="${analysis.title}"`);
