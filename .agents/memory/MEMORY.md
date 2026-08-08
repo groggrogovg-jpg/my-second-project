@@ -15,3 +15,4 @@
 - [Security hardening](security-hardening.md) — auth rate limits, secure sessions, Helmet, API/assets 404 и multipart для trial data-URL
 - [Email verification](email-verification.md) — новые аккаунты подтверждают email перед trial-генерациями; оплаченные ресурсы доступны сразу
 - [Static asset ordering](static-asset-ordering.md) — asset 404 guards must run after express.static or production SPAs show a white screen
+- [Promotional countdown](promo-countdown.md) — таймер акции привязан к аккаунту и сохраняется в localStorage до окончания предложения

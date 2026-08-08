@@ -14,7 +14,7 @@ import {
   CreditCard, Loader2, Camera, Type, Video,
   ImagePlus, X, Info, Target,
   CheckSquare, Square, Check, User, LogIn,
-  ShoppingCart, MessageCircle,
+  ShoppingCart, MessageCircle, Clock,
 } from "lucide-react";
 import type { Generation } from "@shared/schema";
 import {
@@ -54,6 +54,17 @@ type ContentTab = "photo" | "card";
 type VideoDuration = 5 | 10;
 type FormatId = "8:16" | "3:4" | "1:1" | "4:5" | "16:9";
 
+const PROMO_DURATION_SECONDS = 5 * 60 * 60;
+const PROMO_STORAGE_KEY = "kardomatik-nano2-10-promo-ends-at";
+
+function formatCountdown(seconds: number): string {
+  const safeSeconds = Math.max(0, seconds);
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return [hours, minutes, remainingSeconds].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
 const FORMATS: { id: FormatId; label: string }[] = [
   { id: "8:16", label: "8:16" },
   { id: "3:4", label: "3:4" },
@@ -92,6 +103,7 @@ export default function Home() {
   const [verificationMessage, setVerificationMessage] = useState("");
   const [isTrialGeneration, setIsTrialGeneration] = useState(false);
   const [warningModalOpen, setWarningModalOpen] = useState(false);
+  const [promoSecondsLeft, setPromoSecondsLeft] = useState(PROMO_DURATION_SECONDS);
 
   const [activeTab, setActiveTab] = useState<ContentTab>("card");
   const [selectedFormat, setSelectedFormat] = useState<FormatId>("1:1");
@@ -307,6 +319,36 @@ export default function Home() {
     : true;
   const cardTrialAvailable = isAuth && authUser?.emailVerified === true && selectedModel === "nano-banana-2" && !currentModelTrialUsed;
   const tryonTrialAvailable = isAuth && authUser?.emailVerified === true && !authUser?.trialTryonUsed;
+  const showNano2Promo = isAuth
+    && authUser?.emailVerified === true
+    && selectedModel === "nano-banana-2"
+    && nano2Balance === 0
+    && (authUser?.trialNano2Count ?? (authUser?.trialNano2Used ? 1 : 0)) >= 2;
+
+  useEffect(() => {
+    if (!showNano2Promo || !authUser?.id) {
+      setPromoSecondsLeft(PROMO_DURATION_SECONDS);
+      return;
+    }
+
+    const promoStorageKey = `${PROMO_STORAGE_KEY}:${authUser.id}`;
+    const now = Date.now();
+    const storedEndsAt = Number(window.localStorage.getItem(promoStorageKey));
+    const endsAt = Number.isFinite(storedEndsAt) && storedEndsAt > now
+      ? storedEndsAt
+      : now + PROMO_DURATION_SECONDS * 1000;
+
+    if (!(Number.isFinite(storedEndsAt) && storedEndsAt > now)) {
+      window.localStorage.setItem(promoStorageKey, String(endsAt));
+    }
+
+    const updateCountdown = () => {
+      setPromoSecondsLeft(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
+    };
+    updateCountdown();
+    const timer = window.setInterval(updateCountdown, 1000);
+    return () => window.clearInterval(timer);
+  }, [showNano2Promo, authUser?.id]);
 
   const resendVerification = async () => {
     setVerificationLoading(true);
@@ -757,6 +799,7 @@ export default function Home() {
               onGenerate={handleGenerate}
               onAuthOpen={() => { setAuthMode("login"); setAuthModalOpen(true); }}
             />
+            {showNano2Promo && <Nano2PromoBanner secondsLeft={promoSecondsLeft} />}
           </div>
 
           <div className="flex-1 min-w-0 space-y-4">
@@ -806,6 +849,35 @@ export default function Home() {
         </div>
       </main>
     </div>
+  );
+}
+
+function Nano2PromoBanner({ secondsLeft }: { secondsLeft: number }) {
+  return (
+    <Card className="border-amber-300/70 bg-gradient-to-br from-amber-50 to-orange-50 p-4 dark:border-amber-800/60 dark:from-amber-950/40 dark:to-orange-950/30">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-amber-400/20 text-amber-600 dark:text-amber-300">
+          <ShoppingCart className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold leading-snug text-amber-900 dark:text-amber-100">
+            Осталось 0 бесплатных генераций
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-800/80 dark:text-amber-200/80">
+            Купите пакет 10 карт за 499₽ и получите 11-ю в подарок
+          </p>
+          <div className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-200">
+            <Clock className="h-3.5 w-3.5" />
+            Акция: +1 карточка в подарок при покупке пакета 10 карт. До конца: {formatCountdown(secondsLeft)}
+          </div>
+          <Link href="/pricing">
+            <Button size="sm" className="mt-3 w-full bg-amber-500 text-white hover:bg-amber-600" data-testid="button-promo-buy">
+              Купить пакет за 499₽
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </Card>
   );
 }
 
