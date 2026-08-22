@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { Sparkles, ArrowRight, Upload, Settings2, ImageDown, CheckCircle2, Layers, Shirt, Wand2, Mail, MessageCircle, Plus, ArrowRight as ArrowRightSmall, Star } from "lucide-react";
 import FAQ from "@/components/FAQ";
 import { Header } from "@/components/header";
+import VideoGuide from "@/components/video-guide";
 
 const TESTIMONIALS = [
   {
@@ -158,6 +159,8 @@ export default function Landing() {
             </div>
           </div>
         </section>
+
+        <VideoGuide />
 
         <section id="audience" className="max-w-6xl mx-auto px-3 sm:px-6 py-10 sm:py-16">
           <div className="text-center mb-10">
@@ -329,6 +332,19 @@ export default function Landing() {
               <p className="text-muted-foreground max-w-xl mx-auto">
                 Загрузите фото модели и до 5 вещей — ИИ виртуально примерит их и соберёт готовый образ
               </p>
+            </div>
+
+            <div className="max-w-[800px] mx-auto mb-10 rounded-2xl border border-border bg-background p-2 sm:p-3 shadow-sm">
+              <video
+                className="block w-full aspect-video rounded-xl bg-black object-contain"
+                controls
+                preload="metadata"
+                playsInline
+                aria-label="Видео о виртуальной примерке одежды"
+              >
+                <source src="/videos/tryon-guide.mp4" type="video/mp4" />
+                Ваш браузер не поддерживает воспроизведение видео.
+              </video>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-6 lg:gap-4 items-center">
