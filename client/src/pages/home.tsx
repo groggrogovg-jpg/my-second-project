@@ -921,7 +921,7 @@ function PhotoBlock({
         <div className="space-y-3">
           <div className="rounded-xl overflow-hidden border border-primary/20 bg-muted/20">
             <img
-              src={customTryonModel.url || "/tryon/model.jpg"}
+              src={customTryonModel.url || "/tryon/model.webp"}
               alt={customTryonModel.file ? "Ваша модель для примерки" : "Предустановленная модель для примерки"}
               className="w-full max-h-80 object-contain"
               data-testid="img-preset-model"

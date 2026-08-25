@@ -3,6 +3,7 @@ import { Sparkles, ArrowRight, Upload, Settings2, ImageDown, CheckCircle2, Layer
 import FAQ from "@/components/FAQ";
 import { Header } from "@/components/header";
 import VideoGuide from "@/components/video-guide";
+import LazyVideo from "@/components/lazy-video";
 
 const TESTIMONIALS = [
   {
@@ -40,10 +41,10 @@ const TESTIMONIALS = [
 ];
 
 const TRYON_EXAMPLES: { key: string; label: string; src: string; alt: string }[] = [
-  { key: "model", label: "Модель", src: "/tryon/model.jpg", alt: "Фото модели для виртуальной примерки" },
-  { key: "clothing", label: "Пиджак", src: "/tryon/clothing.jpg", alt: "Пиджак для примерки" },
-  { key: "jeans", label: "Юбка", src: "/tryon/jeans.jpg", alt: "Юбка для примерки" },
-  { key: "shoes", label: "Обувь", src: "/tryon/shoes.jpg", alt: "Обувь для примерки" },
+  { key: "model", label: "Модель", src: "/tryon/model.webp", alt: "Фото модели для виртуальной примерки" },
+  { key: "clothing", label: "Пиджак", src: "/tryon/clothing.webp", alt: "Пиджак для примерки" },
+  { key: "jeans", label: "Юбка", src: "/tryon/jeans.webp", alt: "Юбка для примерки" },
+  { key: "shoes", label: "Обувь", src: "/tryon/shoes.webp", alt: "Обувь для примерки" },
 ];
 
 export default function Landing() {
@@ -259,9 +260,11 @@ export default function Landing() {
               <div className="space-y-2">
                 <div className="rounded-xl border border-border bg-muted/40 aspect-square overflow-hidden">
                   <img
-                    src="/before-spray.jpg"
+                    src="/before-spray.webp"
                     alt="Спрей для волос — обычное фото"
                     className="w-full h-full object-cover"
+                    loading="lazy"
+                    decoding="async"
                   />
                 </div>
                 <p className="text-xs text-center text-muted-foreground font-medium">До</p>
@@ -269,9 +272,11 @@ export default function Landing() {
               <div className="space-y-2 relative">
                 <div className="rounded-xl border-2 border-primary/40 aspect-square overflow-hidden relative">
                   <img
-                    src="/after-spray.jpg"
+                    src="/after-spray.webp"
                     alt="Спрей для волос — профессиональная карточка WB"
                     className="w-full h-full object-cover"
+                    loading="lazy"
+                    decoding="async"
                   />
                   <div className="absolute bottom-2 right-2 z-10">
                     <span className="text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded-md font-medium">КардоМатик</span>
@@ -286,9 +291,11 @@ export default function Landing() {
               <div className="space-y-2">
                 <div className="rounded-xl border border-border bg-muted/40 aspect-square overflow-hidden">
                   <img
-                    src="/before-boots.jpg"
+                    src="/before-boots.webp"
                     alt="Ботинки — обычное фото"
                     className="w-full h-full object-cover"
+                    loading="lazy"
+                    decoding="async"
                   />
                 </div>
                 <p className="text-xs text-center text-muted-foreground font-medium">До</p>
@@ -296,9 +303,11 @@ export default function Landing() {
               <div className="space-y-2 relative">
                 <div className="rounded-xl border-2 border-primary/40 aspect-square overflow-hidden relative">
                   <img
-                    src="/after-boots.jpg"
+                    src="/after-boots.webp"
                     alt="Ботинки — профессиональная карточка WB"
                     className="w-full h-full object-cover"
+                    loading="lazy"
+                    decoding="async"
                   />
                   <div className="absolute bottom-2 right-2 z-10">
                     <span className="text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded-md font-medium">КардоМатик</span>
@@ -335,16 +344,12 @@ export default function Landing() {
             </div>
 
             <div className="max-w-[800px] mx-auto mb-10 rounded-2xl border border-border bg-background p-2 sm:p-3 shadow-sm">
-              <video
+              <LazyVideo
                 className="block w-full aspect-video rounded-xl bg-black object-contain"
-                controls
-                preload="metadata"
-                playsInline
-                aria-label="Видео о виртуальной примерке одежды"
-              >
-                <source src="/videos/tryon-guide.mp4" type="video/mp4" />
-                Ваш браузер не поддерживает воспроизведение видео.
-              </video>
+                src="/videos/tryon-guide.mp4"
+                poster="/videos/tryon-guide-poster.webp"
+                ariaLabel="Видео о виртуальной примерке одежды"
+              />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-6 lg:gap-4 items-center">
@@ -352,7 +357,7 @@ export default function Landing() {
                 {TRYON_EXAMPLES.map((ex) => (
                   <div key={ex.key} className="space-y-2">
                     <div className="rounded-xl border border-border bg-background aspect-square overflow-hidden relative">
-                      <img src={ex.src} alt={ex.alt} className="w-full h-full object-cover" />
+                      <img src={ex.src} alt={ex.alt} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                       <span className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-background/90 border border-border flex items-center justify-center">
                         <Plus className="w-3 h-3 text-sky-600" />
                       </span>
@@ -368,7 +373,7 @@ export default function Landing() {
 
               <div className="space-y-2 max-w-xs mx-auto w-full">
                 <div className="rounded-xl border-2 border-sky-500/40 aspect-[2/3] overflow-hidden relative">
-                  <img src="/tryon/result.jpg" alt="Готовый образ после виртуальной примерки" className="w-full h-full object-cover object-top" />
+                  <img src="/tryon/result.webp" alt="Готовый образ после виртуальной примерки" className="w-full h-full object-cover object-top" loading="lazy" decoding="async" />
                   <div className="absolute bottom-2 right-2 z-10">
                     <span className="text-[10px] bg-sky-600 text-white px-1.5 py-0.5 rounded-md font-medium">КардоМатик</span>
                   </div>
