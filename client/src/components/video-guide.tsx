@@ -1,5 +1,6 @@
 import { ArrowRight, PlayCircle } from "lucide-react";
 import { Link } from "wouter";
+import LazyVideo from "@/components/lazy-video";
 
 export default function VideoGuide() {
   return (
@@ -23,16 +24,12 @@ export default function VideoGuide() {
         </div>
 
         <div className="rounded-2xl border border-border bg-background p-2 sm:p-3 shadow-sm">
-          <video
+          <LazyVideo
             className="block w-full aspect-video rounded-xl bg-black object-contain"
-            controls
-            preload="metadata"
-            playsInline
-            aria-label="Видео-инструкция по использованию КардоМатик"
-          >
-            <source src="/videos/guide.mp4" type="video/mp4" />
-            Ваш браузер не поддерживает воспроизведение видео.
-          </video>
+            src="/videos/guide.mp4"
+            poster="/videos/guide-poster.webp"
+            ariaLabel="Видео-инструкция по использованию КардоМатик"
+          />
         </div>
 
         <div className="mt-6 text-center">
