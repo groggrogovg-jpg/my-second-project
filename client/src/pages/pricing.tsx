@@ -12,8 +12,6 @@ import { Header } from "@/components/header";
 import { useToast } from "@/hooks/use-toast";
 
 type ModelTab = "nano2" | "pro";
-type PaymentProvider = "yoomoney" | "yookassa" | "sbp";
-
 export default function Pricing() {
   const [tab, setTab] = useState<ModelTab>("pro");
   const [isAuth, setIsAuth] = useState(false);
@@ -124,7 +122,7 @@ export default function Pricing() {
 
         <div className="mt-6 text-center">
           <p className="text-xs text-muted-foreground">
-             💳 <span className="font-medium text-foreground">Оплата работает!</span> Принимаем банковские карты, SberPay, ЮMoney и ЮKassa. По вопросам:{" "}
+             💳 <span className="font-medium text-foreground">Оплата работает!</span> Принимаем банковские карты, SberPay и СБП через ЮKassa. По вопросам:{" "}
             <a href="mailto:support@kardomatik.ru" className="text-primary hover:underline">
               support@kardomatik.ru
             </a>

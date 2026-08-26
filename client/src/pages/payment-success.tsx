@@ -61,14 +61,14 @@ export default function PaymentSuccess() {
   const [verifyFailed, setVerifyFailed] = useState(false);
   const [currentBalance, setCurrentBalance] = useState(0);
   const [currentStarsBalance, setCurrentStarsBalance] = useState<number | null>(null);
-  const [paymentProvider, setPaymentProvider] = useState("ЮMoney");
+  const [paymentProvider, setPaymentProvider] = useState("ЮKassa");
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attemptsRef = useRef(0);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const label = params.get("label") || "";
-    setPaymentProvider(params.get("provider") === "yookassa" ? "ЮKassa" : "ЮMoney");
+    setPaymentProvider(params.get("provider") === "sbp" ? "СБП" : "ЮKassa");
 
     if (!label) {
       setVerifyFailed(true);

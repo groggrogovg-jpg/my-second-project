@@ -1316,8 +1316,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         planId?: string;
         planType?: string;
         packageId?: string;
-        paymentMethod?: "yoomoney" | "yookassa" | "sbp";
+        paymentMethod?: "yookassa" | "sbp";
       };
+
+      if (paymentMethod !== "yookassa" && paymentMethod !== "sbp") {
+        return res.status(400).json({ error: "Выберите способ оплаты: ЮKassa или СБП" });
+      }
 
       if (paymentMethod === "yookassa" || paymentMethod === "sbp") {
         if (!YK_SHOP_ID || !YK_SECRET_KEY) {
@@ -1461,137 +1465,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           provider: "yookassa",
         });
       }
-
-      // Standalone stars purchase flow.
-      if (packageId && STAR_PACKAGE_DATA[packageId]) {
-        const sessionUserId = req.session?.userId;
-        if (!sessionUserId) {
-          return res.status(401).json({ error: "Войдите в аккаунт перед оплатой" });
-        }
-        const sessionUser = await storage.getAppUserById(sessionUserId);
-        if (!sessionUser) {
-          return res.status(401).json({ error: "Пользователь не найден. Войдите снова." });
-        }
-        const starPackage = STAR_PACKAGE_DATA[packageId];
-        const amount = getTestPrice(starPackage.price);
-        // YooMoney accepts labels up to 64 characters. The old `stars-`
-        // prefix made star labels too long when combined with a UUID.
-        const label = `st-${packageId}-${sessionUserId}-${Date.now()}`;
-        const wallet = process.env.VITE_YOOMONEY_WALLET || "";
-        const host = req.get("host") || "localhost:5000";
-        const proto = req.headers["x-forwarded-proto"] || req.protocol;
-        const successURL = `${proto}://${host}/payment-success?label=${encodeURIComponent(label)}`;
-        const params = new URLSearchParams({
-          receiver: wallet,
-          "quickpay-form": "button",
-          sum: String(amount),
-          label,
-          comment: `КардоМатик: ${starPackage.description}`,
-          successURL,
-        });
-        const url = `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`;
-
-        await storage.recordPayment({
-          label,
-          starsToAdd: starPackage.stars,
-          cardsIncluded: 0,
-          modelType: "",
-          operationId: "",
-          amount: String(amount),
-          username: sessionUser.username,
-          userId: sessionUserId,
-        });
-        console.log(`[payment/create] ✓ stars package=${packageId} stars=${starPackage.stars} amount=${amount}`);
-        return res.json({ url, label, stars: starPackage.stars });
-      }
-
-      // New package-based flow
-      if (packageId) {
-        const sessionUserId = req.session?.userId;
-        if (!sessionUserId) {
-          return res.status(401).json({ error: "Войдите в аккаунт перед оплатой" });
-        }
-        const sessionUser = await storage.getAppUserById(sessionUserId);
-        if (!sessionUser) {
-          return res.status(401).json({ error: "Пользователь не найден. Войдите снова." });
-        }
-        console.log(`[payment/create] ▶ START packageId=${packageId}`);
-        const pkg = PACKAGE_DATA[packageId];
-        if (!pkg) {
-          console.log(`[payment/create] ✗ package NOT FOUND packageId=${packageId}`);
-          return res.status(400).json({ error: "Пакет не найден" });
-        }
-        console.log(`[payment/create] ✓ package found: ${pkg.name} price=${pkg.price} cards=${pkg.cardsIncluded} model=${pkg.modelType}`);
-
-        const amount = getTestPrice(pkg.price);
-        const label = `pkg-${packageId}-${sessionUserId}-${Date.now()}`;
-        const comment = `КардоМатик: ${pkg.name}`;
-        const username = sessionUser.username;
-        console.log(`[payment/create] ✓ amount=${amount}₽ label=${label} user=${username || "anon"}`);
-
-        const wallet = process.env.VITE_YOOMONEY_WALLET || "";
-        if (!wallet) console.warn(`[payment/create] ⚠ VITE_YOOMONEY_WALLET not set`);
-
-        const host = req.get("host") || "localhost:5000";
-        const proto = req.headers["x-forwarded-proto"] || req.protocol;
-        const successURL = `${proto}://${host}/payment-success?label=${encodeURIComponent(label)}&cards=${pkg.cardsIncluded}&model=${pkg.modelType}`;
-        console.log(`[payment/create] ✓ successURL=${successURL}`);
-
-        const params = new URLSearchParams({
-          receiver: wallet,
-          "quickpay-form": "button",
-          sum: String(amount),
-          label,
-          comment,
-          successURL,
-        });
-        const url = `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`;
-
-        const starsIncluded = packageId.endsWith("-10") ? 10 : pkg.cardsIncluded;
-        await storage.recordPayment({ label, starsToAdd: starsIncluded, cardsIncluded: pkg.cardsIncluded, modelType: pkg.modelType, operationId: "", amount: String(amount), username, userId: sessionUserId });
-        console.log(`[payment/create] ✓ DONE returning url for package`);
-        return res.json({ url, label, cards: pkg.cardsIncluded, model: pkg.modelType });
-      }
-
-      // Legacy stars-based flow (kept for backward compat)
-      const id = planId || "";
-      console.log(`[payment/create] ▶ START planId=${id} planType=${planType}`);
-
-      const plan = PLAN_DATA[id];
-      if (!plan) {
-        console.log(`[payment/create] ✗ plan NOT FOUND planId=${id}`);
-        return res.status(400).json({ error: "Тариф не найден" });
-      }
-      console.log(`[payment/create] ✓ plan found: ${plan.name} price=${plan.price} stars=${plan.starsIncluded}`);
-
-      const amount = getTestPrice(plan.price);
-      const label = `${planType}-${id}-${Date.now()}`;
-      const comment = `КардоМатик: "${plan.name}"`;
-      console.log(`[payment/create] ✓ amount=${amount}₽ (${TEST_MODE ? "TEST" : "REAL"}) label=${label}`);
-
-      const wallet = process.env.VITE_YOOMONEY_WALLET || "";
-      console.log(`[payment/create] ✓ wallet=${wallet ? wallet.substring(0, 6) + "..." : "NOT SET"}`);
-
-      const host = req.get("host") || "localhost:5000";
-      const proto = req.headers["x-forwarded-proto"] || req.protocol;
-      const successURL = `${proto}://${host}/payment-success?label=${encodeURIComponent(label)}&stars=${plan.starsIncluded}`;
-      console.log(`[payment/create] ✓ successURL=${successURL}`);
-
-      const params = new URLSearchParams({
-        receiver: wallet,
-        "quickpay-form": "button",
-        sum: String(amount),
-        label,
-        comment,
-        successURL,
-      });
-      const url = `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`;
-
-      await storage.recordPayment({ label, starsToAdd: plan.starsIncluded, cardsIncluded: 0, modelType: "", operationId: "", amount: String(amount), username: (req.session as any)?.username || "", userId: req.session?.userId || null });
-      console.log(`[payment/create] ✓ payment recorded in storage`);
-
-      console.log(`[payment/create] ✓ DONE returning url`);
-      return res.json({ url, label, stars: plan.starsIncluded });
 
     } catch (err: any) {
       const apiStatus = err.response?.status;

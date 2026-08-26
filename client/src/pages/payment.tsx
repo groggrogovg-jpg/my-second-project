@@ -9,7 +9,7 @@ import { Header } from "@/components/header";
 import { NANO2_PACKAGES, PRO_PACKAGES, STAR_PACKAGES } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 
-type PaymentProvider = "yoomoney" | "yookassa" | "sbp";
+type PaymentProvider = "yookassa" | "sbp";
 type PaymentType = "cards" | "stars";
 
 const PAYMENT_METHODS: {
@@ -23,12 +23,6 @@ const PAYMENT_METHODS: {
     title: "ЮKassa",
     description: "Банковская карта, SberPay и другие доступные способы",
     tone: "border-primary/60 bg-primary/5",
-  },
-  {
-    value: "yoomoney",
-    title: "ЮMoney",
-    description: "Оплата через защищённую страницу ЮMoney",
-    tone: "border-border bg-card",
   },
   {
     value: "sbp",
