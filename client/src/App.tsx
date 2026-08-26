@@ -6,12 +6,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FaqChatWidget } from "@/components/faq-chat-widget";
 import { ThemeProvider } from "@/context/theme-context";
-import { MetrikaCounter, ym as metrikaYm } from "react-metrika";
 
 const NotFound = lazy(() => import("@/pages/not-found"));
 const Landing = lazy(() => import("@/pages/landing"));
 const Home = lazy(() => import("@/pages/home"));
 const Pricing = lazy(() => import("@/pages/pricing"));
+const Payment = lazy(() => import("@/pages/payment"));
 const Profile = lazy(() => import("@/pages/profile"));
 const PaymentSuccess = lazy(() => import("@/pages/payment-success"));
 const DevPage = lazy(() => import("@/pages/dev"));
@@ -22,13 +22,6 @@ const VerifyEmail = lazy(() => import("@/pages/verify-email"));
 const PrivacyPolicy = lazy(() => import("@/pages/privacy-policy"));
 const SubscriptionAgreement = lazy(() => import("@/pages/subscription-agreement"));
 const FAQ = lazy(() => import("@/components/FAQ"));
-
-type MetrikaYm = (counterId: number, methodName: string, ...args: any[]) => void;
-type MetrikaWindow = Window & { ym?: MetrikaYm };
-
-if (typeof window !== "undefined" && typeof (window as MetrikaWindow).ym !== "function") {
-  (window as MetrikaWindow).ym = metrikaYm as MetrikaYm;
-}
 
 function Router() {
   return (
@@ -41,6 +34,7 @@ function Router() {
       <Route path="/legal/subscription-agreement" component={SubscriptionAgreement} />
       <Route path="/faq" component={FAQ} />
       <Route path="/pricing" component={Pricing} />
+      <Route path="/payment" component={Payment} />
       <Route path="/profile" component={Profile} />
       <Route path="/payment-success" component={PaymentSuccess} />
       <Route path="/editor/:id" component={Editor} />
@@ -61,15 +55,6 @@ function App() {
             <Router />
           </Suspense>
           {!new URLSearchParams(window.location.search).has("faq-source") && <FaqChatWidget />}
-          <MetrikaCounter
-            id={111247868}
-            options={{
-              webvisor: true,
-              trackHash: true,
-              clickmap: true,
-              accurateTrackBounce: true,
-            }}
-          />
         </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>

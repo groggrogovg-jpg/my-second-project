@@ -61,12 +61,14 @@ export default function PaymentSuccess() {
   const [verifyFailed, setVerifyFailed] = useState(false);
   const [currentBalance, setCurrentBalance] = useState(0);
   const [currentStarsBalance, setCurrentStarsBalance] = useState<number | null>(null);
+  const [paymentProvider, setPaymentProvider] = useState("ЮMoney");
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attemptsRef = useRef(0);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const label = params.get("label") || "";
+    setPaymentProvider(params.get("provider") === "yookassa" ? "ЮKassa" : "ЮMoney");
 
     if (!label) {
       setVerifyFailed(true);
@@ -226,7 +228,7 @@ export default function PaymentSuccess() {
               : "Оплата прошла успешно!"}
           </h1>
           {verifying ? (
-            <p className="text-muted-foreground">Ожидаем подтверждения от ЮMoney...</p>
+            <p className="text-muted-foreground">Ожидаем подтверждения от {paymentProvider}...</p>
           ) : alreadyCredited ? (
             <p className="text-muted-foreground">
               {starsAdded > 0 ? "Звёзды уже были зачислены ранее." : "Карточки уже были зачислены ранее."}

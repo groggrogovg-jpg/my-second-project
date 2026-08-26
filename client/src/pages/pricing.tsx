@@ -1,17 +1,18 @@
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Sparkles, Check, ArrowLeft, Zap, Crown, Package, Loader2 } from "lucide-react";
+import { Sparkles, Check, Zap, Crown, Package } from "lucide-react";
 import { NANO2_PACKAGES, PRO_PACKAGES, STAR_PACKAGES } from "@shared/schema";
 import { Header } from "@/components/header";
 import { useToast } from "@/hooks/use-toast";
 
 type ModelTab = "nano2" | "pro";
+type PaymentProvider = "yoomoney" | "yookassa" | "sbp";
 
 export default function Pricing() {
   const [tab, setTab] = useState<ModelTab>("pro");
@@ -123,7 +124,7 @@ export default function Pricing() {
 
         <div className="mt-6 text-center">
           <p className="text-xs text-muted-foreground">
-            💳 <span className="font-medium text-foreground">Оплата работает!</span> Принимаем банковские карты, SberPay и ЮMoney. По вопросам:{" "}
+             💳 <span className="font-medium text-foreground">Оплата работает!</span> Принимаем банковские карты, SberPay, ЮMoney и ЮKassa. По вопросам:{" "}
             <a href="mailto:support@kardomatik.ru" className="text-primary hover:underline">
               support@kardomatik.ru
             </a>
@@ -217,37 +218,8 @@ function StarsPackagesGrid({
   onLogin: () => void;
   toast: ReturnType<typeof useToast>["toast"];
 }) {
-  const [loadingId, setLoadingId] = useState<string | null>(null);
   const [agreed, setAgreed] = useState<Record<string, boolean>>({});
-
-  const handlePay = async (packageId: string) => {
-    if (!isAuth) {
-      onLogin();
-      return;
-    }
-    setLoadingId(packageId);
-    try {
-      const res = await fetch("/api/payment/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageId }),
-      });
-      const data = await res.json();
-      if (res.status === 401) {
-        onLogin();
-        return;
-      }
-      if (!res.ok || !data.url) throw new Error(data.error || "Ошибка при создании платежа");
-      window.location.href = data.url;
-    } catch (error: any) {
-      toast({
-        title: "Ошибка оплаты",
-        description: error.message || "Не удалось создать платёж. Попробуйте позже.",
-        variant: "destructive",
-      });
-      setLoadingId(null);
-    }
-  };
+  const [, navigate] = useLocation();
 
   return (
     <section className="mt-10 rounded-2xl border border-amber-200 bg-amber-50/50 p-5 sm:p-8 dark:border-amber-900/50 dark:bg-amber-950/20">
@@ -269,12 +241,18 @@ function StarsPackagesGrid({
               <p className="min-h-8 text-xs text-muted-foreground">{pkg.description}</p>
               <Button
                 className="w-full"
-                variant="outline"
-                onClick={() => handlePay(pkg.id)}
-                disabled={loadingId !== null || !agreed[pkg.id]}
+                 variant="default"
+                 onClick={() => {
+                   if (!isAuth) {
+                     onLogin();
+                     return;
+                   }
+                   navigate(`/payment?type=stars&packageId=${encodeURIComponent(pkg.id)}`);
+                 }}
+                 disabled={!agreed[pkg.id]}
                 data-testid={`buy-stars-${pkg.id}`}
               >
-                {loadingId === pkg.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Купить"}
+                Оплатить
               </Button>
 
               <div className="flex items-start gap-2 text-left">
@@ -324,32 +302,8 @@ function PackagesGrid({
   packages: readonly { id: string; cards: number; starsIncluded: number; price: number; perCard: number; saving: number; popular: boolean }[];
 }) {
   const { toast } = useToast();
-  const [loadingId, setLoadingId] = useState<string | null>(null);
   const [agreed, setAgreed] = useState<Record<string, boolean>>({});
-
-  const handlePay = async (packageId: string) => {
-    setLoadingId(packageId);
-    try {
-      // username берётся из сессии на сервере
-      const res = await fetch("/api/payment/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageId }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.url) {
-        throw new Error(data.error || "Ошибка при создании платежа");
-      }
-      window.location.href = data.url;
-    } catch (err: any) {
-      toast({
-        title: "Ошибка оплаты",
-        description: err.message || "Не удалось создать платёж. Попробуйте позже.",
-        variant: "destructive",
-      });
-      setLoadingId(null);
-    }
-  };
+  const [, navigate] = useLocation();
 
   const modelName = model === "nano2" ? "Nano Banana 2" : "Nano Banana Pro";
   const colorClass = model === "pro" ? "border-primary ring-1 ring-primary" : "border-border";
@@ -435,15 +389,11 @@ function PackagesGrid({
             <Button
               className="w-full"
               variant={pkg.popular ? "default" : "outline"}
-              onClick={() => handlePay(pkg.id)}
-              disabled={loadingId !== null || !agreed[pkg.id]}
+              onClick={() => navigate(`/payment?type=cards&packageId=${encodeURIComponent(pkg.id)}`)}
+              disabled={!agreed[pkg.id]}
               data-testid={`pay-${pkg.id}`}
             >
-              {loadingId === pkg.id ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                "Оплатить"
-              )}
+              Оплатить
             </Button>
 
             <div className="flex items-start gap-2 mt-2">

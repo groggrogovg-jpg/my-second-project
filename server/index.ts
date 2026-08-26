@@ -42,7 +42,7 @@ app.use(helmet({
         "https://polza.ai",
         "wss:",
       ],
-      frameSrc: ["'self'"],
+      frameSrc: ["'self'", "https://mc.yandex.ru", "https://yandex.ru", "https://yastatic.net"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       frameAncestors: ["'self'"],

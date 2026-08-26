@@ -72,6 +72,8 @@ import { BACKGROUND_MODELS, STAR_PACKAGES, type BackgroundModelId } from "@share
 
 const YM_NOTIFY_SECRET = process.env.YOOMONEY_NOTIFICATION_SECRET || "";
 const YM_ACCESS_TOKEN = process.env.YOOMONEY_ACCESS_TOKEN || "";
+const YK_SHOP_ID = (process.env.YOOKASSA_SHOP_ID || "").trim();
+const YK_SECRET_KEY = (process.env.YOOKASSA_SECRET_KEY || "").trim();
 const DEV_PROMO_CODE = process.env.DEV_PROMO_CODE || "DEV100";
 
 /**
@@ -184,7 +186,7 @@ const STAR_PACKAGE_DATA = Object.fromEntries(
 // in the signed payment label so a webhook can reconstruct a pending payment
 // after a process restart (the webhook signature is still the source of trust).
 function parsePackagePaymentLabel(label: string): { packageId: string; userId: string } | null {
-  const match = label.match(/^pkg-(nano2-5|nano2-10|nano2-50|nano2-100|pro-5|pro-10|pro-50|pro-100)-(.+)-\d+$/);
+  const match = label.match(/^(?:yk-)?pkg-(nano2-5|nano2-10|nano2-50|nano2-100|pro-5|pro-10|pro-50|pro-100)-(.+)-\d+$/);
   if (!match || !PACKAGE_DATA[match[1]]) return null;
   return { packageId: match[1], userId: match[2] };
 }
@@ -192,9 +194,14 @@ function parsePackagePaymentLabel(label: string): { packageId: string; userId: s
 function parseStarPaymentLabel(label: string): { packageId: string; userId: string } | null {
   // `st-` is used for new payments because YooMoney limits labels to 64
   // characters; the previous `stars-` format could exceed that limit.
-  const match = label.match(/^(?:stars|st)-(stars_10|stars_50|stars_100|stars_250)-(.+)-\d+$/);
+  const match = label.match(/^yk-(?:stars|st)-(stars_10|stars_50|stars_100|stars_250)-(.+)-\d+$/)
+    || label.match(/^(?:stars|st)-(stars_10|stars_50|stars_100|stars_250)-(.+)-\d+$/);
   if (!match || !STAR_PACKAGE_DATA[match[1]]) return null;
   return { packageId: match[1], userId: match[2] };
+}
+
+function isYooKassaPaymentLabel(label: string): boolean {
+  return label.startsWith("yk-");
 }
 
 function paymentPackageName(label: string, payment: { cardsIncluded: number; starsToAdd: number; modelType: string }): string {
@@ -296,6 +303,49 @@ async function verifyYooMoneyPayment(label: string, expectedAmount: string): Pro
     return match ? { operationId: String(match.operation_id || match.operationId || ""), amount: String(match.amount) } : null;
   } catch (error: any) {
     console.error(`[payment/check] YooMoney API error: ${error.response?.status || error.message}`);
+    return null;
+  }
+}
+
+async function verifyYooKassaPayment(
+  paymentId: string,
+  label: string,
+  expectedAmount: string,
+): Promise<{ operationId: string; amount: string } | null> {
+  if (!YK_SHOP_ID || !YK_SECRET_KEY || !paymentId) {
+    if (!paymentId) console.warn(`[payment/check-yookassa] payment id is missing label=${label}`);
+    else console.warn("[payment/check-yookassa] YOOKASSA_SHOP_ID or YOOKASSA_SECRET_KEY is not configured");
+    return null;
+  }
+
+  try {
+    const response = await axios.get(
+      `https://api.yookassa.ru/v3/payments/${encodeURIComponent(paymentId)}`,
+      {
+        auth: { username: YK_SHOP_ID, password: YK_SECRET_KEY },
+        headers: { Accept: "application/json" },
+        timeout: 10000,
+      },
+    );
+    const payment = response.data;
+    const actualLabel = String(payment?.metadata?.label ?? "");
+    const actualAmount = Number(payment?.amount?.value);
+    const expected = Number(expectedAmount);
+    const currency = String(payment?.amount?.currency ?? "");
+    const status = String(payment?.status ?? "");
+    const matches = status === "succeeded"
+      && actualLabel === label
+      && currency === "RUB"
+      && Number.isFinite(actualAmount)
+      && Number.isFinite(expected)
+      && Math.round(actualAmount * 100) === Math.round(expected * 100);
+
+    console.log(`[payment/check-yookassa] id=${paymentId} status=${status} labelMatches=${actualLabel === label} amountMatches=${Math.round(actualAmount * 100) === Math.round(expected * 100)}`);
+    return matches
+      ? { operationId: String(payment.id), amount: actualAmount.toFixed(2) }
+      : null;
+  } catch (error: any) {
+    console.error(`[payment/check-yookassa] API error: ${error.response?.status || error.message}`);
     return null;
   }
 }
@@ -1262,7 +1312,155 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/payment/create", async (req: Request, res: Response) => {
     try {
-      const { planId, planType, packageId } = req.body as { planId?: string; planType?: string; packageId?: string };
+      const { planId, planType, packageId, paymentMethod } = req.body as {
+        planId?: string;
+        planType?: string;
+        packageId?: string;
+        paymentMethod?: "yoomoney" | "yookassa" | "sbp";
+      };
+
+      if (paymentMethod === "yookassa" || paymentMethod === "sbp") {
+        if (!YK_SHOP_ID || !YK_SECRET_KEY) {
+          return res.status(503).json({ error: "ЮKassa ещё не настроена на сервере" });
+        }
+
+        const sessionUserId = req.session?.userId;
+        if (!sessionUserId) {
+          return res.status(401).json({ error: "Войдите в аккаунт перед оплатой" });
+        }
+        const sessionUser = await storage.getAppUserById(sessionUserId);
+        if (!sessionUser) {
+          return res.status(401).json({ error: "Пользователь не найден. Войдите снова." });
+        }
+
+        let order: {
+          label: string;
+          name: string;
+          amount: number;
+          starsToAdd: number;
+          cardsIncluded: number;
+          modelType: string;
+          returnParams: Record<string, string>;
+        } | null = null;
+
+        if (packageId && STAR_PACKAGE_DATA[packageId]) {
+          const starPackage = STAR_PACKAGE_DATA[packageId];
+          order = {
+            label: `yk-st-${packageId}-${sessionUserId}-${Date.now()}`,
+            name: starPackage.description,
+            amount: getTestPrice(starPackage.price),
+            starsToAdd: starPackage.stars,
+            cardsIncluded: 0,
+            modelType: "",
+            returnParams: { stars: String(starPackage.stars) },
+          };
+        } else if (packageId && PACKAGE_DATA[packageId]) {
+          const pkg = PACKAGE_DATA[packageId];
+          order = {
+            label: `yk-pkg-${packageId}-${sessionUserId}-${Date.now()}`,
+            name: pkg.name,
+            amount: getTestPrice(pkg.price),
+            starsToAdd: packageId.endsWith("-10") ? 10 : pkg.cardsIncluded,
+            cardsIncluded: pkg.cardsIncluded,
+            modelType: pkg.modelType,
+            returnParams: { cards: String(pkg.cardsIncluded), model: pkg.modelType },
+          };
+        } else if (planId && PLAN_DATA[planId]) {
+          const plan = PLAN_DATA[planId];
+          order = {
+            label: `yk-${planType || "plan"}-${planId}-${Date.now()}`,
+            name: plan.name,
+            amount: getTestPrice(plan.price),
+            starsToAdd: plan.starsIncluded,
+            cardsIncluded: 0,
+            modelType: "",
+            returnParams: { stars: String(plan.starsIncluded) },
+          };
+        }
+
+        if (!order) {
+          return res.status(400).json({ error: "Тариф или пакет не найден" });
+        }
+
+        const host = req.get("host") || "localhost:5000";
+        const proto = req.headers["x-forwarded-proto"] || req.protocol;
+        const returnUrl = new URL(`${proto}://${host}/payment-success`);
+        returnUrl.searchParams.set("label", order.label);
+        returnUrl.searchParams.set("provider", "yookassa");
+        for (const [key, value] of Object.entries(order.returnParams)) {
+          returnUrl.searchParams.set(key, value);
+        }
+
+        const amountValue = order.amount.toFixed(2);
+        const idempotenceKey = crypto.randomUUID();
+        const yookassaResponse = await axios.post(
+          "https://api.yookassa.ru/v3/payments",
+          {
+            amount: { value: amountValue, currency: "RUB" },
+            capture: true,
+            description: `КардоМатик: ${order.name}`.slice(0, 128),
+            metadata: {
+              label: order.label,
+              userId: sessionUserId,
+              packageId: packageId || planId || "",
+            },
+            confirmation: {
+              type: "redirect",
+              return_url: returnUrl.toString(),
+            },
+            ...(paymentMethod === "sbp" ? {
+              payment_method_data: { type: "sbp" },
+            } : {}),
+            receipt: {
+              customer: { email: sessionUser.email },
+              items: [{
+                description: order.name.slice(0, 128),
+                quantity: "1.00",
+                amount: { value: amountValue, currency: "RUB" },
+                vat_code: 1,
+                payment_mode: "full_payment",
+                payment_subject: "service",
+              }],
+            },
+          },
+          {
+            auth: { username: YK_SHOP_ID, password: YK_SECRET_KEY },
+            headers: {
+              "Idempotence-Key": idempotenceKey,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            timeout: 15000,
+          },
+        );
+
+        const confirmationUrl = yookassaResponse.data?.confirmation?.confirmation_url;
+        const yookassaPaymentId = String(yookassaResponse.data?.id || "");
+        if (!confirmationUrl || !yookassaPaymentId) {
+          throw new Error("ЮKassa не вернула ссылку на оплату");
+        }
+
+        await storage.recordPayment({
+          label: order.label,
+          starsToAdd: order.starsToAdd,
+          cardsIncluded: order.cardsIncluded,
+          modelType: order.modelType,
+          operationId: yookassaPaymentId,
+          amount: amountValue,
+          username: sessionUser.username,
+          userId: sessionUserId,
+        });
+
+        console.log(`[payment/create-yookassa] ✓ payment=${yookassaPaymentId} label=${order.label} amount=${amountValue}`);
+        return res.json({
+          url: confirmationUrl,
+          label: order.label,
+          cards: order.cardsIncluded || undefined,
+          model: order.modelType || undefined,
+          stars: order.starsToAdd || undefined,
+          provider: "yookassa",
+        });
+      }
 
       // Standalone stars purchase flow.
       if (packageId && STAR_PACKAGE_DATA[packageId]) {
@@ -1396,9 +1594,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.json({ url, label, stars: plan.starsIncluded });
 
     } catch (err: any) {
-      console.error(`[payment/create] ✗ ERROR: ${err.message}`);
+      const apiStatus = err.response?.status;
+      const apiError = err.response?.data?.description || err.response?.data?.message || err.response?.data?.type;
+      console.error(`[payment/create] ✗ ERROR: ${err.message} status=${apiStatus || "unknown"} apiError=${apiError || "unknown"}`);
       if (!res.headersSent) {
-        res.status(500).json({ error: err.message || "Внутренняя ошибка сервера" });
+        const isUnavailablePaymentMethod =
+          apiStatus === 400 && /payment method is not available/i.test(String(apiError || ""));
+        const publicError = apiStatus === 401
+          ? "ЮKassa отклонила данные API. Проверьте Shop ID и секретный ключ для этого же тестового магазина."
+          : isUnavailablePaymentMethod
+            ? "СБП пока не подключена или недоступна для этого магазина ЮKassa. Включите СБП в настройках способов оплаты магазина и повторите попытку."
+            : err.message || "Внутренняя ошибка сервера";
+        res.status(apiStatus === 401 ? 502 : isUnavailablePaymentMethod ? 400 : 500).json({ error: publicError });
       }
     }
   });
@@ -1533,6 +1740,90 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ЮKassa webhook: доверяем только платежу, который подтверждён повторным
+  // запросом к API магазина и совпадает с созданным на сервере заказом.
+  app.post("/api/payment/yookassa-webhook", async (req: Request, res: Response) => {
+    try {
+      const event = String(req.body?.event || "");
+      const object = req.body?.object;
+      if (event !== "payment.succeeded") {
+        return res.status(200).send("ok");
+      }
+
+      const paymentId = String(object?.id || "");
+      const label = String(object?.metadata?.label || "");
+      if (!paymentId || !label || !isYooKassaPaymentLabel(label)) {
+        console.warn("[payment/yookassa-webhook] missing payment id or label");
+        return res.status(400).send("invalid notification");
+      }
+
+      const verified = await verifyYooKassaPayment(
+        paymentId,
+        label,
+        String(object?.amount?.value || ""),
+      );
+      if (!verified) {
+        return res.status(400).send("payment verification failed");
+      }
+
+      await storage.updatePaymentOperationId(label, verified.operationId);
+      let confirmed = await storage.confirmPayment(label);
+
+      if (!confirmed) {
+        const recovered = parsePackagePaymentLabel(label);
+        const packageData = recovered ? PACKAGE_DATA[recovered.packageId] : undefined;
+        const recoveredStars = parseStarPaymentLabel(label);
+        const starData = recoveredStars ? STAR_PACKAGE_DATA[recoveredStars.packageId] : undefined;
+
+        if (recovered && packageData) {
+          await storage.recordPayment({
+            label,
+            starsToAdd: recovered.packageId.endsWith("-10") ? 10 : packageData.cardsIncluded,
+            cardsIncluded: packageData.cardsIncluded,
+            modelType: packageData.modelType,
+            operationId: verified.operationId,
+            amount: verified.amount,
+            username: "",
+            userId: recovered.userId,
+          });
+          confirmed = await storage.confirmPayment(label);
+        } else if (recoveredStars && starData) {
+          await storage.recordPayment({
+            label,
+            starsToAdd: starData.stars,
+            cardsIncluded: 0,
+            modelType: "",
+            operationId: verified.operationId,
+            amount: verified.amount,
+            username: "",
+            userId: recoveredStars.userId,
+          });
+          confirmed = await storage.confirmPayment(label);
+        }
+      }
+
+      if (!confirmed) {
+        console.warn(`[payment/yookassa-webhook] payment label not found: ${label}`);
+        return res.status(200).send("ok");
+      }
+
+      const ownerId = confirmed.userId || (await storage.getAppUserByUsername(confirmed.username))?.id;
+      if (ownerId && !confirmed.credited) {
+        const credited = await storage.creditConfirmedPayment(label, ownerId);
+        console.log(`[payment/yookassa-webhook] ${credited ? "✓ credited" : "⚠ credit skipped"} label=${label}`);
+        if (credited) {
+          const creditedPayment = await storage.getPaymentByLabel(label);
+          await sendPaymentConfirmationAfterCredit(label, creditedPayment, credited);
+        }
+      }
+
+      return res.status(200).send("ok");
+    } catch (err: any) {
+      console.error(`[payment/yookassa-webhook] ERROR: ${err.message}`);
+      return res.status(500).send("error");
+    }
+  });
+
   // Проверка статуса платежа по label — клиент использует этот эндпоинт вместо URL-параметров.
   // Начисление баланса выполняется здесь же, атомарно на сервере (не клиентом),
   // и только один раз на подтверждённый платёж — это единственный источник истины по балансу.
@@ -1542,9 +1833,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     let payment = await storage.getPaymentByLabel(label);
     // Webhook delivery is not guaranteed. When the customer returns to the
-    // success page, verify the operation directly through YooMoney as well.
+    // success page, verify the operation directly through the matching provider.
     if (payment && !payment.confirmed) {
-      const operation = await verifyYooMoneyPayment(label, payment.amount);
+      const operation = isYooKassaPaymentLabel(label)
+        ? await verifyYooKassaPayment(payment.operationId, label, payment.amount)
+        : await verifyYooMoneyPayment(label, payment.amount);
       if (operation) {
         await storage.updatePaymentOperationId(label, operation.operationId);
         payment = await storage.confirmPayment(label);
@@ -1553,8 +1846,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     // A process restart can remove the in-memory payment record. For package
     // labels, recover the pending order only after YooMoney confirms the exact
-    // package amount.
-    if (!payment) {
+    // package amount. YooKassa payments are persisted in PostgreSQL with their
+    // payment id, so they are never guessed from a return URL.
+    if (!payment && !isYooKassaPaymentLabel(label)) {
       const recovered = parsePackagePaymentLabel(label);
       const packageData = recovered ? PACKAGE_DATA[recovered.packageId] : undefined;
       const recoveredStars = parseStarPaymentLabel(label);
