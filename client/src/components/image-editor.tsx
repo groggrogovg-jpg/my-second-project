@@ -89,11 +89,36 @@ export default function ImageEditor({ imageUrl, aspectRatio = "1:1", onClose, st
   const [processingLocal, setProcessingLocal] = useState(false);
   const [isErasing, setIsErasing] = useState(false);
   const [eraserCharged, setEraserCharged] = useState(false);
+  const [visualViewport, setVisualViewport] = useState(() => ({
+    height: typeof window === "undefined" ? 0 : (window.visualViewport?.height ?? window.innerHeight),
+    offsetTop: typeof window === "undefined" ? 0 : (window.visualViewport?.offsetTop ?? 0),
+  }));
 
   const stageRef = useRef<Konva.Stage>(null);
+  const stageSizeRef = useRef(stageSize);
   const transformerRef = useRef<Konva.Transformer>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const editInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const updateViewport = () => {
+      setVisualViewport({
+        height: viewport?.height ?? window.innerHeight,
+        offsetTop: viewport?.offsetTop ?? 0,
+      });
+    };
+
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    viewport?.addEventListener("resize", updateViewport);
+    viewport?.addEventListener("scroll", updateViewport);
+    return () => {
+      window.removeEventListener("resize", updateViewport);
+      viewport?.removeEventListener("resize", updateViewport);
+      viewport?.removeEventListener("scroll", updateViewport);
+    };
+  }, []);
 
   useEffect(() => {
     let objectUrl: string | null = null;
@@ -137,20 +162,48 @@ export default function ImageEditor({ imageUrl, aspectRatio = "1:1", onClose, st
 
     const updateSize = () => {
       const rect = containerRef.current!.getBoundingClientRect();
-      const maxW = Math.max(rect.width - 8, 200);
-      const maxH = window.innerHeight - 180;
+      const maxW = Math.max(rect.width - 16, 1);
+      const maxH = Math.max(rect.height - 16, 1);
       const ratio = imageEl.naturalWidth / imageEl.naturalHeight;
       let w = maxW;
       let h = w / ratio;
       if (h > maxH) { h = maxH; w = h * ratio; }
-      setStageSize({ width: Math.round(w), height: Math.round(h) });
+      const nextSize = {
+        width: Math.max(1, Math.round(w)),
+        height: Math.max(1, Math.round(h)),
+      };
+      const previousSize = stageSizeRef.current;
+      if (nextSize.width === previousSize.width && nextSize.height === previousSize.height) return;
+
+      if (elements.length > 0 && previousSize.width > 1 && previousSize.height > 1) {
+        const scaleX = nextSize.width / previousSize.width;
+        const scaleY = nextSize.height / previousSize.height;
+        const visualScale = Math.min(scaleX, scaleY);
+        setElements((current) => current.map((element) => ({
+          ...element,
+          x: element.x * scaleX,
+          y: element.y * scaleY,
+          fontSize: Math.max(8, element.fontSize * visualScale),
+          padding: element.padding * visualScale,
+          cornerRadius: element.cornerRadius * visualScale,
+        })));
+      }
+
+      stageSizeRef.current = nextSize;
+      setStageSize(nextSize);
     };
 
     updateSize();
     const ro = new ResizeObserver(updateSize);
     ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, [imageEl]);
+    window.addEventListener("resize", updateSize);
+    window.visualViewport?.addEventListener("resize", updateSize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", updateSize);
+      window.visualViewport?.removeEventListener("resize", updateSize);
+    };
+  }, [imageEl, elements.length]);
 
   useEffect(() => {
     if (!transformerRef.current || !stageRef.current) return;
@@ -205,6 +258,38 @@ export default function ImageEditor({ imageUrl, aspectRatio = "1:1", onClose, st
     setEditingId(null);
     setSelectedId(editingId);
   }, [editingId, editText]);
+
+  useEffect(() => {
+    if (!editingId || !stageRef.current || !containerRef.current) return;
+
+    const frame = requestAnimationFrame(() => {
+      const node = stageRef.current?.findOne(`#${editingId}`);
+      const stage = stageRef.current;
+      const container = containerRef.current;
+      const element = elements.find((item) => item.id === editingId);
+      if (!node || !stage || !container || !element) return;
+
+      const absPos = node.getAbsolutePosition();
+      const stageBox = stage.container().getBoundingClientRect();
+      const containerBox = container.getBoundingClientRect();
+      const textW = Math.max(
+        measureTextWidth(element.text, element.fontSize, element.fontStyle) + element.padding * 2 + 10,
+        120,
+      );
+      const textH = Math.max(element.fontSize + element.padding * 2 + 4, 36);
+      const x = stageBox.left - containerBox.left + absPos.x;
+      const y = stageBox.top - containerBox.top + absPos.y;
+
+      setEditPos({
+        x: Math.max(0, Math.min(x, containerBox.width - textW)),
+        y: Math.max(0, Math.min(y, containerBox.height - textH)),
+        w: Math.min(textW, containerBox.width),
+        h: textH,
+      });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [editingId, elements, stageSize, visualViewport.height]);
 
   const addText = () => {
     const el: EditorElement = {
@@ -295,35 +380,6 @@ export default function ImageEditor({ imageUrl, aspectRatio = "1:1", onClose, st
     canvas.height = imageEl.naturalHeight;
     canvas.getContext("2d")!.drawImage(imageEl, 0, 0);
     return canvas;
-  };
-
-  const handleRemoveBackground = async () => {
-    const cost = 1;
-    if (!confirmStarAction(cost)) return;
-    const previous = blobUrl;
-    setProcessingLocal(true);
-    try {
-      const { removeBackground } = await import("@imgly/background-removal");
-      const source = await (await fetch(blobUrl || imageUrl)).blob();
-      const transparentBlob = await removeBackground(source, { progress: () => {} });
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error("Не удалось прочитать результат удаления фона"));
-        reader.readAsDataURL(transparentBlob);
-      });
-      await setImageFromDataUrl(dataUrl);
-      try {
-        await deductStars(cost, "remove-background");
-      } catch (err) {
-        if (previous) await setImageFromDataUrl(previous);
-        throw err;
-      }
-    } catch (err: any) {
-      alert(err.message || "Не удалось удалить фон");
-    } finally {
-      setProcessingLocal(false);
-    }
   };
 
   const handleFillBackground = async (color: string) => {
@@ -476,46 +532,76 @@ export default function ImageEditor({ imageUrl, aspectRatio = "1:1", onClose, st
 
   return (
     <>
-    <div className="fixed inset-0 z-50 bg-background flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm text-foreground">Редактор изображения</span>
+    <div
+      className="fixed inset-x-0 z-50 bg-background flex flex-col overflow-hidden"
+      data-testid="image-editor"
+      style={{ top: visualViewport.offsetTop, height: visualViewport.height || "100dvh" }}
+    >
+      <div className="flex items-center justify-between gap-2 px-2 py-2 sm:px-4 sm:py-3 border-b border-border bg-background flex-shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-semibold text-sm text-foreground truncate">
+            <span className="sm:hidden">Редактор</span>
+            <span className="hidden sm:inline">Редактор изображения</span>
+          </span>
           {isTrial && (
-            <Badge variant="outline" className="text-xs border-amber-400 text-amber-600 bg-amber-500/10">
-              Пробная версия
+            <Badge variant="outline" className="text-[10px] sm:text-xs border-amber-400 text-amber-600 bg-amber-500/10 px-1.5 sm:px-2.5">
+              <span className="sm:hidden">Пробная</span>
+              <span className="hidden sm:inline">Пробная версия</span>
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => setBgEditorOpen(true)} disabled={bgGenerating || processingLocal}>
-            <ImageIcon className="w-3.5 h-3.5 mr-1.5" />
-            {bgGenerating ? "Генерация..." : "Изменить фон"}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-9 w-9 p-0 sm:h-9 sm:w-auto sm:px-3"
+            onClick={() => setBgEditorOpen(true)}
+            disabled={bgGenerating || processingLocal}
+            title="Изменить фон"
+            aria-label="Изменить фон"
+          >
+            {bgGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4 sm:mr-1.5" />}
+            <span className="hidden sm:inline">{bgGenerating ? "Генерация..." : "Изменить фон"}</span>
           </Button>
           <Button
             size="sm"
+            className="h-9 w-9 p-0 sm:h-9 sm:w-auto sm:px-3"
             onClick={handleExport}
             disabled={saving || !isAuth || !hasBalance || isTrial}
             title={!isAuth ? "Скачивание доступно только после авторизации" : !hasBalance ? "Скачивание доступно только после покупки пакета карточек" : isTrial ? "Скачивание недоступно в пробной версии" : undefined}
+            aria-label={saving ? "Сохраняем изображение" : "Скачать изображение"}
           >
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            {saving ? "Сохраняем..." : "Скачать"}
+            {saving ? <Loader2 className="w-4 h-4 animate-spin sm:mr-1.5" /> : <Download className="w-4 h-4 sm:mr-1.5" />}
+            <span className="hidden sm:inline">{saving ? "Сохраняем..." : "Скачать"}</span>
           </Button>
-          <Button size="sm" variant="outline" onClick={onClose}>
-            <X className="w-3.5 h-3.5 mr-1.5" />
-            Закрыть
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-9 w-9 p-0 sm:h-9 sm:w-auto sm:px-3"
+            onClick={onClose}
+            title="Закрыть"
+            aria-label="Закрыть редактор"
+          >
+            <X className="w-4 h-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">Закрыть</span>
           </Button>
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0 flex-col md:flex-row overflow-hidden">
         <div
-          className="flex-1 overflow-auto p-3 flex items-start justify-center"
+          className="flex-1 min-h-0 min-w-0 overflow-hidden p-2 sm:p-3 flex items-center justify-center"
           ref={containerRef}
+          data-testid="image-editor-workspace"
           onContextMenu={isTrial ? (e) => e.preventDefault() : undefined}
           onDragStart={isTrial ? (e) => e.preventDefault() : undefined}
           style={{ userSelect: "none" }}
         >
-          <div style={{ position: "relative", width: stageSize.width, height: stageSize.height }}>
+          <div
+            className="touch-none"
+            data-testid="image-editor-canvas"
+            style={{ position: "relative", width: stageSize.width, height: stageSize.height }}
+          >
             {loading ? (
               <div className="w-full h-full flex items-center justify-center bg-muted rounded-lg text-muted-foreground text-sm">
                 Загружаем изображение...
@@ -646,9 +732,12 @@ export default function ImageEditor({ imageUrl, aspectRatio = "1:1", onClose, st
           </div>
         </div>
 
-        <div className="w-64 border-l border-border bg-background flex flex-col flex-shrink-0 overflow-y-auto">
+        <div
+          className={`${editingId ? "hidden md:flex" : "flex"} w-full max-h-[42svh] border-t border-border bg-background flex-col flex-shrink-0 overflow-hidden md:max-h-none md:w-64 md:border-l md:border-t-0`}
+          data-testid="image-editor-toolbar"
+        >
           <button
-            className="flex items-center justify-between px-4 py-3 text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+            className="flex items-center justify-between px-3 py-2 sm:px-4 sm:py-3 text-sm font-semibold text-foreground hover:bg-muted transition-colors flex-shrink-0"
             onClick={() => setPanelOpen(v => !v)}
           >
             Инструменты
@@ -656,8 +745,11 @@ export default function ImageEditor({ imageUrl, aspectRatio = "1:1", onClose, st
           </button>
 
           {panelOpen && (
-            <div className="px-3 pb-4 space-y-4">
-              <div className="border-b border-border pb-4 space-y-3">
+            <div
+              className="overflow-y-auto px-2 pb-2 sm:px-3 sm:pb-4 space-y-2 sm:space-y-4 overscroll-contain"
+              data-testid="image-editor-toolbar-scroll"
+            >
+              <div className="border-b border-border pb-2 sm:pb-4 space-y-2 sm:space-y-3">
                 <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                   <Palette className="w-3.5 h-3.5 text-primary" />
                   Фон
@@ -666,12 +758,12 @@ export default function ImageEditor({ imageUrl, aspectRatio = "1:1", onClose, st
                   variant="outline"
                   size="sm"
                   className="w-full justify-start gap-2"
-                  onClick={handleRemoveBackground}
-                  disabled={processingLocal || !imageEl}
-                  title="Удаляет фон и оставляет товар на прозрачном PNG"
+                  onClick={() => setBgEditorOpen(true)}
+                  disabled={bgGenerating || processingLocal || !imageEl}
+                  title="Изменить фон с помощью AI"
                 >
-                  {processingLocal ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eraser className="w-4 h-4" />}
-                  Удалить фон · 1 ⭐
+                  {bgGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
+                  {bgGenerating ? "Генерация..." : "Изменить фон"}
                 </Button>
                 <div className="space-y-1.5">
                   <p className="text-xs text-muted-foreground">Заливка фона · 0,5 ⭐</p>
@@ -729,13 +821,13 @@ export default function ImageEditor({ imageUrl, aspectRatio = "1:1", onClose, st
               </Button>
 
               <div>
-                <p className="text-xs text-muted-foreground font-medium mb-2">Плашки</p>
-                <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground font-medium mb-1.5 sm:mb-2">Плашки</p>
+                <div className="grid grid-cols-2 gap-1 md:block md:space-y-1.5">
                   {BADGE_TEMPLATES.map((tmpl, i) => (
                     <button
                       key={i}
                       onClick={() => addBadge(tmpl)}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted transition-colors text-left"
+                      className="w-full min-w-0 flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted transition-colors text-left"
                     >
                       <span
                         className="text-xs font-semibold px-2 py-0.5 rounded flex-shrink-0"
