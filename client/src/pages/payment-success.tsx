@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { CheckCircle, Sparkles, ArrowRight, Loader2, AlertCircle, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  getCardsPaymentGoal,
+  getStarsPaymentGoal,
+  type CardModel,
+} from "@shared/payment-goals";
 
 declare global {
   interface Window {
@@ -21,22 +26,6 @@ function getBalance(key: string): number {
   const stored = localStorage.getItem(key);
   if (stored && !isNaN(Number(stored))) return Number(stored);
   return 0;
-}
-
-function getCardsPaymentGoal(cards: number): string | null {
-  if (cards === 5) return "pay_pack_5";
-  if (cards === 11) return "pay_pack_10";
-  if (cards === 50) return "pay_pack_50";
-  if (cards === 100) return "pay_pack_100";
-  return null;
-}
-
-function getStarsPaymentGoal(stars: number): string | null {
-  if (stars === 10) return "pay_stars_10";
-  if (stars === 50) return "pay_stars_50";
-  if (stars === 100) return "pay_stars_100";
-  if (stars === 250) return "pay_stars_250";
-  return null;
 }
 
 function trackPaymentGoal(label: string, goal: string | null): void {
@@ -100,7 +89,7 @@ export default function PaymentSuccess() {
       return;
     }
 
-    const creditCards = async (cards: number, mdl: "nano2" | "pro") => {
+    const creditCards = async (cards: number, mdl: CardModel) => {
       const balKey = mdl === "pro" ? PRO_KEY : NANO2_KEY;
       const current = getBalance(balKey);
       const newBal = current + cards;
@@ -117,7 +106,7 @@ export default function PaymentSuccess() {
       const starsNew = starsCurrent + cards;
       localStorage.setItem(STARS_KEY, String(starsNew));
       setStarsAdded(cards);
-      trackPaymentGoal(label, getCardsPaymentGoal(cards));
+      trackPaymentGoal(label, getCardsPaymentGoal(cards, mdl));
       // Баланс аккаунта уже был начислен сервером атомарно в /api/payment/verify
       // (см. storage.creditConfirmedPayment) — здесь только читаем актуальное значение для отображения.
       try {
