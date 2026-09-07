@@ -2,6 +2,16 @@ import { pgTable, text, varchar, timestamp, jsonb, boolean } from "drizzle-orm/p
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const SELLER_NOTES_MAX_LENGTH = 500;
+export const sellerNotesSchema = z.string().trim().max(
+  SELLER_NOTES_MAX_LENGTH,
+  `Описание не должно превышать ${SELLER_NOTES_MAX_LENGTH} символов`,
+);
+
+export function normalizeSellerNotes(value: unknown): string {
+  return String(value ?? "").trim().slice(0, SELLER_NOTES_MAX_LENGTH);
+}
+
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default("gen_random_uuid()"),
   username: text("username").notNull().unique(),
@@ -33,6 +43,8 @@ export const generations = pgTable("generations", {
 
 export const insertGenerationSchema = createInsertSchema(generations).omit({
   createdAt: true,
+}).extend({
+  notes: sellerNotesSchema.nullable().optional(),
 });
 
 export type InsertGeneration = z.infer<typeof insertGenerationSchema>;
