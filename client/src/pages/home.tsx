@@ -18,12 +18,14 @@ import {
 } from "lucide-react";
 import type { Generation } from "@shared/schema";
 import {
-  MODELS, ASPECT_RATIOS, VIDEO_STAR_COSTS, TRYON_STAR_COST,
+  MODELS, ASPECT_RATIOS, VIDEO_STAR_COSTS, TRYON_STAR_COST, SELLER_NOTES_MAX_LENGTH,
+  normalizeSellerNotes,
   type ModelId, type AspectRatioId,
 } from "@shared/schema";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Header } from "@/components/header";
 import { formatSubscriptionExpiry } from "@/lib/utils";
+import { applyAiIdea, receiveAiIdea } from "@shared/ai-idea";
 
 type GarmentCategory = "head" | "top" | "bottom" | "feet" | "extra";
 const GARMENT_CATEGORIES: { id: GarmentCategory; label: string; examples: string }[] = [
@@ -1258,9 +1260,16 @@ function CardTabContent({
   selectedFiles: File[]; trialNano2Count: number; nano2Balance: number; proBalance: number;
 }) {
   const [suggesting, setSuggesting] = useState(false);
+  const [suggestedIdea, setSuggestedIdea] = useState("");
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
   const { toast } = useToast();
 
   const handleSuggest = async () => {
+    if (!isAuth) {
+      toast({ title: "Войдите, чтобы получить AI-идею", variant: "destructive" });
+      return;
+    }
     if (!selectedFiles[0]) {
       toast({ title: "Сначала загрузите фото товара", variant: "destructive" });
       return;
@@ -1270,10 +1279,22 @@ function CardTabContent({
       const fd = new FormData();
       fd.append("image", selectedFiles[0]);
       const res = await fetch("/api/suggest-notes", { method: "POST", body: fd });
-      if (!res.ok) throw new Error("Ошибка сервера");
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Ошибка сервера");
+      }
       const data = await res.json();
-      setNotes(data.notes || "");
-      toast({ title: "Готово! Текст вставлен — можете отредактировать" });
+      const idea = String(data.notes || "").trim();
+      if (!idea) throw new Error("AI не смогла предложить текст");
+
+      const next = receiveAiIdea(notesRef.current, idea);
+      setNotes(normalizeSellerNotes(next.notes));
+      setSuggestedIdea(next.suggestedIdea);
+      if (next.suggestedIdea) {
+        toast({ title: "AI-идея готова", description: "Выберите, как использовать её, чтобы сохранить свой текст." });
+      } else {
+        toast({ title: "Готово! Текст вставлен — можете отредактировать" });
+      }
     } catch (err: any) {
       toast({ title: "Ошибка AI-идеи", description: err.message, variant: "destructive" });
     } finally {
@@ -1288,23 +1309,86 @@ function CardTabContent({
           <p className="text-xs font-medium text-foreground">О чём рассказать</p>
           <button
             onClick={handleSuggest}
-            disabled={suggesting || !selectedFiles[0]}
-            className="flex items-center gap-1 text-xs text-primary font-medium opacity-70 hover:opacity-100 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={suggesting || !selectedFiles[0] || !isAuth}
+            className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-blue-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-violet-500/30 transition-all hover:from-violet-500 hover:to-blue-400 hover:shadow-md hover:shadow-violet-500/30 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
             data-testid="button-suggest-notes"
+            title={!isAuth ? "Войдите, чтобы получить AI-идею" : undefined}
           >
-            {suggesting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-            AI идея
+            {suggesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            {suggesting ? "ИИ придумывает..." : "AI идея"}
           </button>
         </div>
-        <p className="text-xs text-muted-foreground mb-1.5">Напишите в свободной форме, какой текст хотите видеть на карточке</p>
+        <p className="text-xs text-muted-foreground mb-1.5">
+          Напишите свой текст или нажмите <span className="font-semibold text-violet-600 dark:text-violet-400">«AI идея»</span> — ИИ проанализирует фото и сам предложит, о чём рассказать на карточке.
+        </p>
         <Textarea
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setNotes(value);
+            if (value.trim()) setNoText(false);
+          }}
           placeholder="Например: натуральный состав, приятный запах, быстрый эффект..."
+          maxLength={SELLER_NOTES_MAX_LENGTH}
           rows={3}
           className="resize-none text-sm"
           data-testid="input-notes"
         />
+        <p
+          className={`mt-1 text-right text-xs ${notes.length >= SELLER_NOTES_MAX_LENGTH ? "text-destructive" : "text-muted-foreground"}`}
+          data-testid="notes-character-count"
+        >
+          {notes.length} / {SELLER_NOTES_MAX_LENGTH}
+        </p>
+        {suggestedIdea && (
+          <div className="mt-2 rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2" data-testid="suggested-idea">
+            <p className="text-xs font-medium text-foreground">AI предлагает:</p>
+            <p className="text-sm text-foreground leading-relaxed">{suggestedIdea}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="text-xs"
+                onClick={() => {
+                  const next = applyAiIdea(notesRef.current, suggestedIdea, "insert");
+                  setNotes(normalizeSellerNotes(next.notes));
+                  setSuggestedIdea(next.suggestedIdea);
+                }}
+                data-testid="button-insert-idea"
+              >
+                Добавить к моему тексту
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="text-xs"
+                onClick={() => {
+                  const next = applyAiIdea(notesRef.current, suggestedIdea, "replace");
+                  setNotes(normalizeSellerNotes(next.notes));
+                  setSuggestedIdea(next.suggestedIdea);
+                }}
+                data-testid="button-replace-with-idea"
+              >
+                Заменить текст
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="text-xs"
+                onClick={() => {
+                  const next = applyAiIdea(notesRef.current, suggestedIdea, "dismiss");
+                  setNotes(next.notes);
+                  setSuggestedIdea(next.suggestedIdea);
+                }}
+                data-testid="button-dismiss-idea"
+              >
+                Оставить мой текст
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {isAuth ? (
