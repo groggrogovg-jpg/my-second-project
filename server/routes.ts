@@ -5,6 +5,12 @@ import { storage, MemStorage, effectiveCards, type TrialFeature } from "./storag
 import { applyTrialWatermark, bufferToDataUrl } from "./watermark";
 import multer from "multer";
 import fs from "fs";
+import {
+  buildFinalCardPrompt,
+  buildSellerAnalysisRequest,
+  buildSellerAnalysisRule,
+} from "@shared/seller-content";
+import { sellerNotesSchema } from "@shared/schema";
 
 /**
  * Скачивает итоговое изображение с Polza.ai и, если это пробная генерация,
@@ -516,11 +522,14 @@ async function pollPolzaMedia(jobId: string, apiKey: string): Promise<string> {
 }
 
 async function analyzeWithGpt(imageBase64: string, mimeType: string, notes?: string, noText?: boolean): Promise<any> {
+  const sellerNotes = String(notes || "").trim();
   const promptField = noText
     ? `"prompt": "Детальный промпт на английском для нейросети: оформить фото товара в чистую профессиональную карточку, описав стиль фона, цветовую схему, освещение, тени и нейтральные декоративные элементы. ВАЖНО: без текста, логотипов, водяных знаков и символики сторонних платформ — только товар и фон)"`
     : `"prompt": "Детальный промпт на английском для нейросети: оформить фото товара в чистую профессиональную карточку, описав стиль фона, цветовую схему, текстовые блоки и нейтральную инфографику. Не добавляй логотипы, водяные знаки или символику сторонних платформ. Текст в карточке должен быть на РУССКОМ языке)"`;
 
-  const systemPrompt = `Ты — профессиональный копирайтер и визуальный аналитик. Твоя задача — по одной загруженной фотографии товара создать полноценную, продающую карточку товара.
+  const sellerNotesRule = buildSellerAnalysisRule(sellerNotes, noText);
+
+  const systemPrompt = `Ты — профессиональный копирайтер и визуальный аналитик. Твоя задача — по одной загруженной фотографии товара создать полноценную, продающую карточку товара.${sellerNotesRule}
 
 Алгоритм:
 1. Внимательно проанализируй изображение: определи товар, категорию, тип, пол и возрастную группу; опиши только видимые детали — материал, текстуру, цвет, фурнитуру, упаковку, форму, размер, текст, этикетки, бренд, фон, освещение и предметы для масштаба. На основе визуала оцени стиль и назначение товара.
@@ -558,7 +567,7 @@ async function analyzeWithGpt(imageBase64: string, mimeType: string, notes?: str
           },
           {
             type: "text",
-            text: `Проанализируй этот товар по заданному алгоритму и создай готовую карточку. Верни только JSON без пояснений.${notes ? `\n\nДополнительная информация от продавца (учти её, но не противоречь видимому на фото): ${notes}` : ""}`,
+            text: buildSellerAnalysisRequest(sellerNotes),
           },
         ],
       },
@@ -639,6 +648,20 @@ function buildFallbackAnalysis(notes = "", noText = false): any {
   };
 }
 
+function applySellerNotesToAnalysis(analysis: any, notes = "", noText = false): any {
+  const sellerText = notes.trim();
+  if (!sellerText || noText) return analysis;
+
+  return {
+    ...analysis,
+    prompt: `${String(analysis?.prompt || "Create a professional marketplace product card based on the provided product photo.")}
+
+The seller provided this factual creative brief: ${JSON.stringify(sellerText)}
+Design a complete sales-focused marketplace card from it. Do not merely paste the brief as a paragraph. Convert its meaning into a concise Russian headline and short benefit callouts arranged with strong visual hierarchy. Preserve the product itself, use professional composition and typography, and do not invent unsupported claims, specifications, logos, or watermarks.`,
+    source: "seller-guided",
+  };
+}
+
 // Создаём текстовые идеи для поля "О чём рассказать" — только русский текст, без JSON
 async function suggestNotes(imageBase64: string, mimeType: string): Promise<string> {
   const systemPrompt = `Ты — топ-маркетолог мирового уровня. Проанализируй фото товара и напиши 4–5 преимуществ или уникальных свойств в продающей форме, которые было бы полезно указать продавцу для карточки на маркетплейсе.
@@ -672,28 +695,11 @@ async function generateCardWithPolza(
   aspectRatio: string = "1:1",
   model: string = "nano-banana-2",
   noText: boolean = false,
+  sellerNotes: string = "",
 ): Promise<string> {
   const polzaModelId = POLZA_MODEL_MAP[model] || POLZA_MODEL_MAP["nano-banana-2"];
   const resolution = modelToResolution(model);
-
-  const fullPrompt = noText
-    ? `${prompt}
-
-Important requirements:
- - Create a clean professional product card based on the provided photo
-- Use modern clean design with gradient or white background
-- Beautiful product showcase with perfect lighting and shadows
-- NO text, NO text overlays, NO captions, NO labels, NO badges with text anywhere in the image
-- Only the product and a clean, professional background`
-    : `${prompt}
-
-Important requirements:
-- Create a professional marketplace product card based on the provided photo
-- Add Russian text overlays highlighting product benefits
-- Use modern clean design with gradient or white background
- - Include only neutral decorative elements; never add marketplace/platform logos, watermarks, or platform-specific symbols
-- Make it visually striking and sales-focused
-- All text overlays must be in Russian language`;
+  const fullPrompt = buildFinalCardPrompt(prompt, sellerNotes, noText);
 
   console.log(`[polza.ai] ▶ generateCard polzaModel=${polzaModelId} ratio=${aspectRatio} res=${resolution}`);
 
@@ -838,8 +844,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const model = (req.body?.model as string) || "nano-banana-pro";
       const aspectRatio = (req.body?.aspectRatio as string) || "1:1";
-      const notes = (req.body?.notes as string) || "";
-      const noText = req.body?.noText === "true";
+      const notesResult = sellerNotesSchema.safeParse(String(req.body?.notes || ""));
+      if (!notesResult.success) {
+        return res.status(400).json({ error: notesResult.error.issues[0]?.message || "Описание слишком длинное" });
+      }
+      const notes = notesResult.data;
+      // Введённый текст продавца важнее случайно оставленного переключателя «без текста».
+      const noText = req.body?.noText === "true" && !notes;
       const username = (req.body?.username as string) || "";
       if (username) storage.trackUser(username).catch(() => {});
       const resolution = model === "nano-banana-2" ? "1K" : "2K";
@@ -900,6 +911,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             console.warn(`[generate] AI analysis unavailable, using template fallback: ${analysisError?.message || "unknown error"}`);
             analysis = buildFallbackAnalysis(notes, noText);
           }
+           analysis = applySellerNotesToAnalysis(analysis, notes, noText);
           console.log(`[generate] ✓ GPT analysis done title="${analysis.title}" designStyle="${analysis.designStyle}"`);
 
           await storage.updateGeneration(generation.id, {
@@ -912,7 +924,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           await storage.updateGeneration(generation.id, { status: "generating" });
           console.log(`[generate] ✓ Status → generating, calling Polza.ai...`);
 
-          const resultUrl = await generateCardWithPolza(imageBuffer, filename, mimeType, analysis.prompt, aspectRatio, model, noText);
+          const resultUrl = await generateCardWithPolza(imageBuffer, filename, mimeType, analysis.prompt, aspectRatio, model, noText, notes);
           const finalUrl = await processResultImage(resultUrl, entitlement.usedTrial);
           await storage.updateGeneration(generation.id, { status: "done", resultImageUrl: finalUrl, usedTrial: entitlement.usedTrial });
           if (username) storage.incrementUserGenerations(username).catch(() => {});
@@ -1927,7 +1939,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  if (TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_URL) {
+  if (process.env.NODE_ENV !== "test" && TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_URL) {
     void setTelegramWebhook(process.env.TELEGRAM_WEBHOOK_URL.trim().replace(/\/+$/, "")).then((result) => {
       if (result.ok) console.log(`[telegram] startup webhook registered`);
       else console.warn(`[telegram] startup webhook registration skipped: ${result.description || "unknown error"}`);
@@ -2522,11 +2534,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Периодическая очистка просроченных карточек (каждые 30 мин)
-  setInterval(() => {
+  const cleanupTimer = setInterval(() => {
     storage.deleteExpiredGenerations().then((count) => {
       if (count > 0) console.log(`[cleanup] Удалено ${count} просроченных карточек`);
     }).catch(() => {});
   }, 30 * 60 * 1000);
+  cleanupTimer.unref();
 
   return httpServer;
 }

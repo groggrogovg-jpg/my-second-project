@@ -7,12 +7,15 @@
     "dev": "NODE_ENV=development node_modules/.bin/tsx server/index.ts",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
-    "check": "tsc"
+    "check": "tsc",
+    "test": "NODE_ENV=test tsx --test shared/*.test.ts server/*.test.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
     "@imgly/background-removal": "^1.7.0",
     "@jridgewell/trace-mapping": "^0.3.25",
+    "@playwright/test": "^1.63.0",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.7",
     "@radix-ui/react-aspect-ratio": "^1.1.3",
